@@ -1,0 +1,6 @@
+pyaudio
+webrtcvad
+openwakeword
+faster-whisper
+numpy
+pydantic
