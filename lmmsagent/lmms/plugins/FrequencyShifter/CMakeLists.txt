@@ -1,3 +1,0 @@
-INCLUDE(BuildPlugin)
-
-BUILD_PLUGIN(frequencyshifter FrequencyShifterEffect.cpp FrequencyShifterControls.cpp FrequencyShifterControlDialog.cpp MOCFILES FrequencyShifterEffect.h FrequencyShifterControls.h FrequencyShifterControlDialog.h EMBEDDED_RESOURCES *.png)

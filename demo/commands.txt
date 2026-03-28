@@ -1,0 +1,9 @@
+add 808
+show mixer
+show piano roll
+new sample track
+new instrument kicker
+open slicer
+add effect amplifier
+remove effect amplifier
+import audio /tmp/test.wav

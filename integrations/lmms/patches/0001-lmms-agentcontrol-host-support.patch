@@ -1,0 +1,85 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0bf0bad72..7de249deb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -189,7 +189,7 @@ else()
+ 	set(STATUS_QT6 "Disabled")
+ endif()
+ 
+-find_package(Qt${QT_VERSION_MAJOR} ${LMMS_QT_MIN_VERSION} COMPONENTS Core Gui Widgets Xml Svg REQUIRED)
++find_package(Qt${QT_VERSION_MAJOR} ${LMMS_QT_MIN_VERSION} COMPONENTS Core Gui Widgets Xml Svg Network REQUIRED)
+ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS LinguistTools QUIET)
+ 
+ include_directories(SYSTEM
+@@ -197,6 +197,7 @@ include_directories(SYSTEM
+ 	${Qt${QT_VERSION_MAJOR}Gui_INCLUDE_DIRS}
+ 	${Qt${QT_VERSION_MAJOR}Widgets_INCLUDE_DIRS}
+ 	${Qt${QT_VERSION_MAJOR}Xml_INCLUDE_DIRS}
++	${Qt${QT_VERSION_MAJOR}Network_INCLUDE_DIRS}
+ )
+ 
+ set(QT_LIBRARIES
+@@ -205,6 +206,7 @@ set(QT_LIBRARIES
+ 	Qt${QT_VERSION_MAJOR}::Widgets
+ 	Qt${QT_VERSION_MAJOR}::Xml
+ 	Qt${QT_VERSION_MAJOR}::Svg
++	Qt${QT_VERSION_MAJOR}::Network
+ )
+ 
+ IF(LMMS_BUILD_LINUX AND WANT_VST AND NOT WANT_QT6)
+diff --git a/cmake/modules/PluginList.cmake b/cmake/modules/PluginList.cmake
+index 8dc1f72f6..79446ff67 100644
+--- a/cmake/modules/PluginList.cmake
++++ b/cmake/modules/PluginList.cmake
+@@ -78,6 +78,7 @@ SET(LMMS_PLUGIN_LIST
+ 	Vibed
+ 	Xpressive
+ 	ZynAddSubFx
++	AgentControl
+ )
+ 
+ IF("${PLUGIN_LIST}" STREQUAL "")
+diff --git a/include/EffectChain.h b/include/EffectChain.h
+index 20af59817..f480acec1 100644
+--- a/include/EffectChain.h
++++ b/include/EffectChain.h
+@@ -64,6 +64,7 @@ public:
+ 	void moveDown( Effect * _effect );
+ 	void moveUp( Effect * _effect );
+ 	bool processAudioBuffer(AudioBuffer& buffer);
++	const std::vector<Effect*>& effects() const { return m_effects; }
+ 
+ 	void clear();
+ 
+diff --git a/src/gui/MainWindow.cpp b/src/gui/MainWindow.cpp
+index 73c477647..03db76d70 100644
+--- a/src/gui/MainWindow.cpp
++++ b/src/gui/MainWindow.cpp
+@@ -352,7 +352,10 @@ void MainWindow::finalize()
+ 	m_toolsMenu = new QMenu( this );
+ 	for( const Plugin::Descriptor* desc : getPluginFactory()->descriptors(Plugin::Type::Tool) )
+ 	{
+-		m_toolsMenu->addAction( desc->logo->pixmap(), desc->displayName );
++		const auto icon = desc->logo
++			? QIcon{desc->logo->pixmap()}
++			: QIcon{embed::getIconPixmap("icon_small")};
++		m_toolsMenu->addAction( icon, desc->displayName );
+ 		m_tools.push_back( ToolPlugin::instantiate( desc->name, /*this*/nullptr )
+ 						   ->createView(this) );
+ 	}
+diff --git a/src/gui/ToolPluginView.cpp b/src/gui/ToolPluginView.cpp
+index de553519c..5654558cb 100644
+--- a/src/gui/ToolPluginView.cpp
++++ b/src/gui/ToolPluginView.cpp
+@@ -43,7 +43,10 @@ ToolPluginView::ToolPluginView( ToolPlugin * _toolPlugin ) :
+ 	parentWidget()->setAttribute( Qt::WA_DeleteOnClose, false );
+ 
+ 	setWindowTitle( _toolPlugin->displayName() );
+-	setWindowIcon( _toolPlugin->descriptor()->logo->pixmap() );
++	const auto icon = _toolPlugin->descriptor()->logo
++		? QIcon{_toolPlugin->descriptor()->logo->pixmap()}
++		: QIcon{embed::getIconPixmap("icon_small")};
++	setWindowIcon( icon );
+ }
+ 
+ 

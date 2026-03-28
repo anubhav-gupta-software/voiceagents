@@ -39,7 +39,5 @@ __pycache__/
 .env
 .env.*
 
-# Legacy folders still on disk (not part of the project anymore)
-extension/
-backend/
-docs/
+# Local LMMS build trees
+build/
