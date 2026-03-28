@@ -87,6 +87,7 @@
     if (p.intent === "MEDIA") return "MEDIA: " + (p.slots.action || "");
     if (p.intent === "PAGE_NAV") return "PAGE: " + (p.slots.direction || "");
     if (p.intent === "FORM") return "FORM: " + (p.slots.action || "");
+    if (p.intent === "YT_ACTION") return "YT: " + (p.slots.action || "").replace(/_/g, " ");
     if (p.intent === "SYSTEM") return "Stopped listening";
     return p.intent;
   }
