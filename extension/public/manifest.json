@@ -2,12 +2,13 @@
   "manifest_version": 3,
   "name": "Chromium Voice + Eye Agent",
   "version": "1.0",
-  "description": "Local-only, privacy-first voice and gaze assistant.",
+  "description": "Local-only, privacy-first voice and gaze browser assistant.",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
-    "nativeMessaging"
+    "nativeMessaging",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,7 +18,18 @@
     "default_title": "Voice Agent Settings"
   },
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js", "executor.js", "overlay.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "favicon.svg",
+    "48": "favicon.svg",
+    "128": "favicon.svg"
   }
 }
