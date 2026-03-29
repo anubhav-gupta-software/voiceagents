@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050508" />
+  <meta name="description" content="VoiceAgents - voice-native computing. Local. Private. Browser and LMMS agents." />
+  <meta property="og:title" content="VoiceAgents" />
+  <meta property="og:description" content="Voice-native computing. Local. Private. Instant." />
+  <meta property="og:type" content="website" />
+  <title>VoiceAgents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      /* Canvas */
+      --bg: #030304;
+      --bg-elevated: #0c0c10;
+      --text: #f4f4f5;
+      --muted: #9ca3af;
+      --dim: #52525b;
+      --line: rgba(255, 255, 255, 0.07);
+      --line-strong: rgba(255, 255, 255, 0.12);
+      /* Theme: voice spectrum (cyan) + agent (violet) */
+      --voice: #22d3ee;
+      --voice-soft: rgba(34, 211, 238, 0.14);
+      --agent: #a78bfa;
+      --agent-soft: rgba(167, 139, 250, 0.16);
+      --accent: var(--agent);
+      --accent-dim: var(--agent-soft);
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --pad-x: clamp(1.5rem, 6vw, 4rem);
+      --col: min(42rem, 100%);
+      --radius-sm: 10px;
+      --radius-md: 14px;
+      --shadow-soft: 0 24px 80px rgba(0, 0, 0, 0.55);
+      /* Space reserved for fixed .site-header (incl. safe area) — keeps hero title clear */
+      --header-offset: calc(env(safe-area-inset-top, 0px) + 5.25rem);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: var(--header-offset);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .reveal { opacity: 1 !important; transform: none !important; }
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      font-size: 1rem;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layered atmosphere + film grain */
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 100% 80% at 50% -20%, rgba(99, 102, 241, 0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 70% 50% at 100% 0%, rgba(167, 139, 250, 0.11) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 45% at 0% 100%, rgba(34, 211, 238, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 40% at 80% 90%, rgba(139, 92, 246, 0.06) 0%, transparent 45%);
+    }
+
+    .bg-grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      mix-blend-mode: overlay;
+    }
+
+    .bg-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(ellipse 75% 70% at 50% 45%, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
+    }
+
+    main {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Top bar: brand strip */
+    .site-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: calc(0.85rem + env(safe-area-inset-top, 0px)) var(--pad-x) 0.85rem;
+      background: linear-gradient(to bottom, rgba(3, 3, 4, 0.92) 0%, rgba(3, 3, 4, 0.65) 70%, transparent 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid transparent;
+    }
+
+    .site-brand {
+      font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+      font-weight: 800;
+      font-size: 0.95rem;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .site-brand::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--voice), var(--agent));
+      box-shadow: 0 0 16px rgba(34, 211, 238, 0.45), 0 0 20px rgba(167, 139, 250, 0.35);
+    }
+
+    .site-meta {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    .site-meta span {
+      color: var(--muted);
+    }
+
+    .site-meta span + span::before {
+      content: " · ";
+      color: var(--dim);
+    }
+
+    @media (max-width: 520px) {
+      .site-meta { display: none; }
+    }
+
+    .wrap {
+      width: var(--col);
+      margin: 0 auto;
+      padding-left: var(--pad-x);
+      padding-right: var(--pad-x);
+    }
+
+    /* Hero - PPT reference: big wordmark, grey tagline, left */
+    .hero {
+      min-height: 100dvh;
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      /* Clear fixed header + notch; keeps centered headline from sliding under bar */
+      padding-top: var(--header-offset);
+      padding-bottom: max(6rem, env(safe-area-inset-bottom, 0px));
+      overflow: visible;
+    }
+
+    .hero-title {
+      font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+      font-weight: 800;
+      /* Cap size to .wrap column (max 42rem), not full viewport — prevents right-edge clip */
+      font-size: clamp(
+        2rem,
+        min(
+          10.5vw,
+          calc(
+            (
+              min(100vw, 42rem)
+              - 2 * var(--pad-x)
+              - env(safe-area-inset-left, 0px)
+              - env(safe-area-inset-right, 0px)
+            ) / 7.1
+          )
+        ),
+        7rem
+      );
+      /* Room for ascenders / gradient text + drop-shadow paint bounds */
+      line-height: 1.06;
+      letter-spacing: -0.04em;
+      padding: 0.12em 0 0.06em;
+      overflow: visible;
+      max-width: 100%;
+      background: linear-gradient(
+        120deg,
+        #ffffff 0%,
+        #e4e4e7 18%,
+        #a5b4fc 42%,
+        #22d3ee 72%,
+        #c4b5fd 100%
+      );
+      background-size: 160% 160%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 0 28px rgba(167, 139, 250, 0.2)) drop-shadow(0 0 48px rgba(34, 211, 238, 0.08));
+    }
+
+    @supports not (background-clip: text) {
+      .hero-title {
+        color: var(--text);
+        background: none;
+        filter: none;
+      }
+    }
+
+    .hero-tag {
+      margin-top: 1.75rem;
+      font-size: clamp(0.95rem, 2.2vw, 1.15rem);
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+      max-width: 28em;
+    }
+
+    .hero-tag strong { color: #d4d4d8; font-weight: 600; }
+
+    .scroll-hint {
+      margin-top: auto;
+      padding-top: 4rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--dim);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .scroll-hint::after {
+      content: "";
+      width: 1px;
+      height: 3rem;
+      background: linear-gradient(to bottom, var(--dim), transparent);
+    }
+
+    /* Sections - themed bands (subtle tints) */
+    section.page-section {
+      padding: clamp(5rem, 12vh, 8rem) 0;
+      border-top: 1px solid var(--line);
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+    }
+
+    section.page-section[data-theme="violet"] {
+      background-image: linear-gradient(180deg, rgba(99, 102, 241, 0.07) 0%, transparent 42%);
+    }
+
+    section.page-section[data-theme="cyan"] {
+      background-image: linear-gradient(180deg, rgba(34, 211, 238, 0.06) 0%, transparent 42%);
+    }
+
+    section.page-section[data-theme="neutral"] {
+      background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, transparent 38%);
+    }
+
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+
+    .section-label::before {
+      content: "";
+      width: 1.5rem;
+      height: 1px;
+      background: linear-gradient(90deg, var(--voice), var(--agent));
+      opacity: 0.7;
+    }
+
+    h2.section-title {
+      font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+      color: var(--text);
+    }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #e5e5e5;
+      margin: 1.75rem 0 0.5rem;
+    }
+
+    p, li {
+      color: #b0b0b0;
+      font-size: 0.98rem;
+      line-height: 1.65;
+    }
+
+    p + p { margin-top: 1rem; }
+
+    ul.plain {
+      list-style: none;
+      margin: 1.25rem 0;
+    }
+
+    ul.plain li {
+      position: relative;
+      padding-left: 1.1rem;
+      margin-bottom: 0.65rem;
+    }
+
+    ul.plain li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.65em;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--voice), var(--agent));
+      box-shadow: 0 0 10px rgba(167, 139, 250, 0.35);
+      opacity: 0.95;
+    }
+
+    .callout {
+      margin-top: 1.5rem;
+      padding: 1.25rem 1.35rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line-strong);
+      border-left: 3px solid var(--agent);
+      background:
+        linear-gradient(135deg, var(--agent-soft) 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg-elevated) 0%, rgba(12, 12, 16, 0.85) 100%);
+      box-shadow: var(--shadow-soft);
+      color: #d4d4d8;
+      font-size: 0.95rem;
+    }
+
+    .callout strong { color: #fff; }
+
+    .callout.theme-cyan {
+      border-left-color: var(--voice);
+      background:
+        linear-gradient(135deg, var(--voice-soft) 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg-elevated) 0%, rgba(12, 12, 16, 0.85) 100%);
+    }
+
+    .callout.theme-muted {
+      border-left-color: #52525b;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(12, 12, 16, 0.6) 100%);
+      box-shadow: none;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    @media (min-width: 640px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+
+    .tile {
+      position: relative;
+      padding: 1.35rem 1.35rem 1.35rem 1.4rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.015) 100%);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+      overflow: hidden;
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(180deg, var(--voice), var(--agent));
+      opacity: 0.85;
+    }
+
+    .tile h3 { margin-top: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+
+    footer.end {
+      position: relative;
+      min-height: 60vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6rem var(--pad-x);
+      text-align: left;
+    }
+
+    footer.end::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 80%, rgba(167, 139, 250, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 50% at 90% 20%, rgba(34, 211, 238, 0.08) 0%, transparent 45%);
+      pointer-events: none;
+    }
+
+    .end-title {
+      font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.5rem, 8vw, 4rem);
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(115deg, #fff 0%, #c4b5fd 50%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    @supports not (background-clip: text) {
+      .end-title { color: var(--text); background: none; }
+    }
+
+    .end-tag {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 2rem;
+    }
+
+    .pills span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 0.45rem 0.95rem;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: 0 0 20px rgba(167, 139, 250, 0.06);
+    }
+
+    .pills span:nth-child(1) { border-color: rgba(34, 211, 238, 0.25); color: #a5f3fc; }
+    .pills span:nth-child(2) { border-color: rgba(167, 139, 250, 0.3); color: #ddd6fe; }
+    .pills span:nth-child(3) { border-color: rgba(255, 255, 255, 0.12); color: var(--muted); }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+    }
+
+    .reveal.is-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Section nav - right rail */
+    .section-nav {
+      position: fixed;
+      right: clamp(0.75rem, 2vw, 1.5rem);
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .section-nav a {
+      display: block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(82, 82, 91, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: transform 0.25s var(--ease), box-shadow 0.25s, background 0.25s;
+    }
+
+    .section-nav a:hover,
+    .section-nav a:focus-visible {
+      background: rgba(161, 161, 170, 0.9);
+      outline: none;
+    }
+
+    .section-nav a.active {
+      background: linear-gradient(135deg, var(--voice), var(--agent));
+      transform: scale(1.4);
+      box-shadow:
+        0 0 0 2px rgba(3, 3, 4, 0.95),
+        0 0 16px rgba(34, 211, 238, 0.45),
+        0 0 24px rgba(167, 139, 250, 0.35);
+    }
+
+    @media (max-width: 900px) {
+      .section-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+  <div class="bg-grain" aria-hidden="true"></div>
+  <div class="bg-vignette" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="site-brand" href="#top">VoiceAgents</a>
+    <p class="site-meta"><span>Voice-native</span><span>Local</span><span>Private</span></p>
+  </header>
+
+  <nav class="section-nav" aria-label="Sections">
+    <a href="#top" data-section="top" title="Top"></a>
+    <a href="#suite" data-section="suite" title="Suite"></a>
+    <a href="#chromium" data-section="chromium" title="Chromium"></a>
+    <a href="#lmms" data-section="lmms" title="LMMS"></a>
+    <a href="#why" data-section="why" title="Why"></a>
+    <a href="#future" data-section="future" title="Future"></a>
+    <a href="#spec" data-section="spec" title="Spec"></a>
+    <a href="#end" data-section="end" title="End"></a>
+  </nav>
+
+  <main id="top">
+    <header class="hero wrap">
+      <h1 class="hero-title">VoiceAgents</h1>
+      <p class="hero-tag">
+        <strong>Voice-native computing.</strong> Local. Private. Instant.<br />
+        OpenClaw-grade ambition, built for accessibility: the browser and the DAW, commanded by voice, on your machine.
+      </p>
+      <div class="scroll-hint">Scroll</div>
+    </header>
+
+    <section class="page-section wrap reveal" id="suite" data-reveal data-theme="violet">
+      <p class="section-label">The suite</p>
+      <h2 class="section-title">Two agents. One thesis.</h2>
+      <div class="grid-2">
+        <div class="tile">
+          <h3>Chromium</h3>
+          <p>Cursor for the web. Tabs, search, scroll, media, real sites - spoken into motion. The browser stops being an obstacle course.</p>
+        </div>
+        <div class="tile">
+          <h3>LMMS</h3>
+          <p>Cursor for the session. Transport, tracks, plugins - voice and text through a real AgentControl boundary. The DAW stops fighting you.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Line for the room:</strong> We took “AI is the new cursor” and put it where creators actually live - the open web and the open session. Same pattern. Two industries. One voice.
+      </div>
+    </section>
+
+    <section class="page-section wrap reveal" id="chromium" data-reveal data-theme="cyan">
+      <p class="section-label">Product / Web</p>
+      <h2 class="section-title">Chromium</h2>
+      <p style="color:#a3a3a3;">Cursor for the web.</p>
+      <ul class="plain">
+        <li><strong style="color:#e5e5e5;">Intent in, action out</strong> - navigation, controls, the long tail of real pages.</li>
+        <li><strong style="color:#e5e5e5;">Regex + optional local LLM</strong> - fast demos; semantic rescue when phrasing gets human.</li>
+        <li><strong style="color:#e5e5e5;">Surface truth</strong> - you always know when the mic is in the loop.</li>
+        <li><strong style="color:#e5e5e5;">Serious sites</strong> - YouTube, Reddit, Instagram - extensible to anything worth commanding.</li>
+      </ul>
+      <div class="callout theme-cyan">
+        <strong>Own the room:</strong> Speech becomes a first-class input to the browser - not dictation dumped into a search box.
+      </div>
+    </section>
+
+    <section class="page-section wrap reveal" id="lmms" data-reveal data-theme="violet">
+      <p class="section-label">Product / Audio</p>
+      <h2 class="section-title">LMMS Agent</h2>
+      <p style="color:#a3a3a3;">Cursor for music production.</p>
+      <ul class="plain">
+        <li><strong style="color:#e5e5e5;">AgentControl plugin</strong> - automation through a deliberate, inspectable seam.</li>
+        <li><strong style="color:#e5e5e5;">Voice + text</strong> - same vocabulary; studio when it is quiet, text when it is not.</li>
+        <li><strong style="color:#e5e5e5;">Local stack</strong> - takes stay in the session, not on a stranger’s GPU.</li>
+      </ul>
+      <div class="callout theme-cyan">
+        <strong>Own the room:</strong> Not “chat for musicians” - the moment the DAW takes direction like an instrument, not a fight.
+      </div>
+    </section>
+
+    <section class="page-section wrap reveal" id="why" data-reveal data-theme="neutral">
+      <p class="section-label">Why it matters</p>
+      <h2 class="section-title">More than a demo.</h2>
+      <ul class="plain">
+        <li><strong style="color:#e5e5e5;">Accessibility is the architecture</strong> - voice as a peer to pointer and keyboard; recoverable flows.</li>
+        <li><strong style="color:#e5e5e5;">Two domains, one pattern</strong> - consumption (web) plus creation (LMMS). Platform-shaped, not a Chrome trick.</li>
+        <li><strong style="color:#e5e5e5;">Local-by-default</strong> - schools, studios, clinics - a trust story.</li>
+      </ul>
+      <p class="callout theme-muted"><strong>Closer:</strong> Agentic, but accountable.</p>
+    </section>
+
+    <section class="page-section wrap reveal" id="future" data-reveal data-theme="violet">
+      <p class="section-label">Future</p>
+      <h2 class="section-title">When everything is voice-native.</h2>
+      <ul class="plain">
+        <li><strong style="color:#e5e5e5;">One mental model across apps</strong> - say intent, ground, confirm risk, execute.</li>
+        <li><strong style="color:#e5e5e5;">Smarter grounding</strong> - accessibility tree plus gaze hints so “that control” is a ranked choice.</li>
+        <li><strong style="color:#e5e5e5;">Workflows, not lone commands</strong> - chains with checkpoints and undo.</li>
+        <li><strong style="color:#e5e5e5;">Voice as infrastructure</strong> - RSI, motor and vision load, hands-busy jobs.</li>
+      </ul>
+      <div class="callout">
+        <strong>Final beat:</strong> A world where your computer understands your job - without pretending it owns your life.
+      </div>
+    </section>
+
+    <section class="page-section wrap reveal" id="spec" data-reveal data-theme="cyan">
+      <p class="section-label">Spec</p>
+      <h2 class="section-title">Architecture north star.</h2>
+      <p>
+        Full technical plan: <strong style="color:#e5e5e5;">local-only</strong> inference, gaze as a ranking signal, policy engine for risk tiers, accessibility-first UX - documented for implementers.
+      </p>
+      <div class="tile" style="margin-top:1.25rem;">
+        <h3>voice_agent_full_plan_v4.md</h3>
+        <p style="margin:0;">Command schemas, world model, fusion, safety, metrics - the blueprint behind the story.</p>
+      </div>
+    </section>
+
+    <footer class="end wrap reveal" id="end" data-reveal>
+      <p class="end-title">VoiceAgents</p>
+      <p class="end-tag">Local. Loud. Legible.</p>
+      <div class="pills">
+        <span>Chromium</span>
+        <span>LMMS</span>
+        <span>Accessibility-first</span>
+      </div>
+      <p style="margin-top:3rem;font-size:1.25rem;font-weight:600;color:#fff;">Questions?</p>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      var reveals = document.querySelectorAll("[data-reveal]");
+      var navLinks = document.querySelectorAll(".section-nav a");
+
+      function setActive(id) {
+        navLinks.forEach(function (a) {
+          a.classList.toggle("active", a.getAttribute("href") === "#" + id);
+        });
+      }
+
+      if (!window.IntersectionObserver) {
+        reveals.forEach(function (el) { el.classList.add("is-in"); });
+        return;
+      }
+
+      var io = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) en.target.classList.add("is-in");
+          });
+        },
+        { rootMargin: "-8% 0px -8% 0px", threshold: 0.08 }
+      );
+
+      reveals.forEach(function (el) { io.observe(el); });
+
+      var sections = document.querySelectorAll("section.page-section, header.hero, footer.end");
+      var spy = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (en) {
+            if (!en.isIntersecting) return;
+            var id = en.target.id;
+            if (id === "top" || en.target.classList.contains("hero")) setActive("top");
+            else if (id) setActive(id);
+          });
+        },
+        { rootMargin: "-45% 0px -45% 0px", threshold: 0 }
+      );
+
+      sections.forEach(function (s) { spy.observe(s); });
+
+      navLinks.forEach(function (a) {
+        a.addEventListener("click", function () {
+          var href = a.getAttribute("href");
+          if (href === "#top") setActive("top");
+        });
+      });
+
+      setActive("top");
+    })();
+  </script>
+</body>
+</html>

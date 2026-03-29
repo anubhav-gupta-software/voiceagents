@@ -2,6 +2,8 @@
 node_modules/
 venv/
 
+
+hackathon_pitch.md
 # Build artifacts
 dist-ssr/
 *.local
