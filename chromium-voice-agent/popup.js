@@ -106,6 +106,16 @@
       if (p.slots.action === "add_comment" && p.slots.text) return "YT: comment \"" + (p.slots.text.length > 40 ? p.slots.text.substring(0, 40) + "…" : p.slots.text) + "\"";
       return "YT: " + ya;
     }
+    if (p.intent === "REDDIT_ACTION") {
+      var ra = (p.slots.action || "").replace(/_/g, " ");
+      if (p.slots.text) return "Reddit: " + ra + " \"" + (p.slots.text.length > 35 ? p.slots.text.substring(0, 35) + "…" : p.slots.text) + "\"";
+      return "Reddit: " + ra;
+    }
+    if (p.intent === "INSTAGRAM_ACTION") {
+      var ia = (p.slots.action || "").replace(/_/g, " ");
+      if (p.slots.text) return "IG: " + ia + " \"" + (p.slots.text.length > 35 ? p.slots.text.substring(0, 35) + "…" : p.slots.text) + "\"";
+      return "IG: " + ia;
+    }
     if (p.intent === "SYSTEM") return "Stopped listening";
     if (p.intent === "UNKNOWN") return "? (not a command)";
     return p.intent;

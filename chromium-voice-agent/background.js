@@ -80,7 +80,7 @@ var LLM_SYSTEM_PROMPT = [
   "YT_ACTION download: download, download this, save offline",
   "YT_ACTION clip: clip, make a clip, create clip",
   "",
-  "NAVIGATE: go to youtube.com, open google.com, visit reddit",
+  "NAVIGATE: go to youtube.com, open google.com, visit reddit, instagram, instagram reels",
   "  slots: {url:'https://...'}",
   "  YouTube shortcuts: trending, subscriptions, watch later, liked videos, history, shorts, library",
   "",
@@ -104,6 +104,9 @@ var LLM_SYSTEM_PROMPT = [
   "  slots: {text:'...', field:'(optional field name)'}",
   "",
   "ZOOM in/out/reset: zoom in, zoom out, reset zoom, make it bigger, make it smaller",
+  "",
+  "REDDIT_ACTION upvote|downvote|save_post|share|open_comments|scroll_next|scroll_prev|join|reply_compose (slots.text for reply body)",
+  "INSTAGRAM_ACTION like|unlike|save|unsave|share|focus_comments|compose_comment|next_story|prev_story (slots.text for compose_comment)",
   "",
   "NONE: random speech, background noise, not a command, conversation, singing, humming",
   "",
@@ -266,6 +269,39 @@ function parseCommand(text) {
   if (/^(?:go\s+to\s+)?(?:my\s+)?(?:youtube\s+)?(?:channel|my\s+channel)$/.test(t)) return { intent: "YT_ACTION", slots: { action: "my_channel" } };
   if (/^(?:go\s+to\s+)?(?:youtube\s+)?notifications?$/.test(t)) return { intent: "YT_ACTION", slots: { action: "notifications" } };
 
+  // ══════════════════════════════════════
+  // REDDIT & INSTAGRAM (navigation + actions)
+  // ══════════════════════════════════════
+
+  if (/^(?:go\s+to\s+)?reddit$|^open\s+reddit$/.test(t)) return { intent: "NAVIGATE", slots: { url: "https://www.reddit.com/" } };
+  if (/^reddit\s+popular$|^popular\s+reddit$/.test(t)) return { intent: "NAVIGATE", slots: { url: "https://www.reddit.com/r/popular/" } };
+
+  if (/^(?:go\s+to\s+)?instagram(?:\s+home)?$/.test(t) || t === "instagram") return { intent: "NAVIGATE", slots: { url: "https://www.instagram.com/" } };
+  if (/^instagram\s+reels$|^open\s+reels$/.test(t)) return { intent: "NAVIGATE", slots: { url: "https://www.instagram.com/reels/" } };
+  if (/^instagram\s+messages$|^open\s+dms$|^direct\s+messages$/.test(t)) return { intent: "NAVIGATE", slots: { url: "https://www.instagram.com/direct/inbox/" } };
+
+  if (/^reddit\s+upvote$|^upvote$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "upvote" } };
+  if (/^reddit\s+downvote$|^downvote$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "downvote" } };
+  if (/^save\s+post$|^save\s+this\s+post$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "save_post" } };
+  if (/^share\s+(?:this\s+)?post$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "share" } };
+  if (/^(?:next|skip)\s+post$|^scroll\s+next\s+post$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "scroll_next" } };
+  if (/^(?:prev|previous)\s+post$|^scroll\s+prev(?:ious)?\s+post$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "scroll_prev" } };
+  if (/^reddit\s+comments$|^open\s+post\s+comments$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "open_comments" } };
+  if (/^join(?:\s+(?:subreddit|this|community))?$/.test(t)) return { intent: "REDDIT_ACTION", slots: { action: "join" } };
+  var redditReply = t.match(/^reply\s+(.+)$/);
+  if (redditReply && redditReply[1].trim()) return { intent: "REDDIT_ACTION", slots: { action: "reply_compose", text: redditReply[1].trim() } };
+
+  if (/^(?:like|heart)\s+(?:this\s+)?(?:post|photo|pic)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "like" } };
+  if (/^unlike\s+(?:this\s+)?(?:post|photo)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "unlike" } };
+  if (/^insta\s+save$|^instagram\s+save$|^(?:save|bookmark)\s+(?:this\s+)?(?:photo|pic)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "save" } };
+  if (/^insta\s+unsave$|^unsave\s+(?:this\s+)?(?:photo|pic)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "unsave" } };
+  if (/^insta\s+share$|^instagram\s+share$|^share\s+(?:this\s+)?(?:photo|pic|story)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "share" } };
+  if (/^(?:next|nexxt|skip)\s+(?:story|reel)s?$/.test(t) || /^reels?\s+(?:next|nexxt|skip)$/.test(t) || /^swipe\s+up$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "next_story" } };
+  if (/^(?:prev|previous)\s+(?:story|reel)s?$/.test(t) || /^reels?\s+(?:back|prev|previous)$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "prev_story" } };
+  if (/^instagram\s+open\s+comments$|^insta\s+comments$/.test(t)) return { intent: "INSTAGRAM_ACTION", slots: { action: "focus_comments" } };
+  var igCommentPhrase = t.match(/^(?:instagram|insta)\s+comment\s+(.+)$/);
+  if (igCommentPhrase && igCommentPhrase[1].trim()) return { intent: "INSTAGRAM_ACTION", slots: { action: "compose_comment", text: igCommentPhrase[1].trim() } };
+
   // ── Channel Page Navigation ──
   if (/^(?:(?:go\s+to|show|view)\s+)?channel\s+videos?$/.test(t)) return { intent: "YT_ACTION", slots: { action: "channel_tab", tab: "videos" } };
   if (/^(?:(?:go\s+to|show|view)\s+)?channel\s+shorts?$/.test(t)) return { intent: "YT_ACTION", slots: { action: "channel_tab", tab: "shorts" } };
@@ -377,8 +413,8 @@ function parseCommand(text) {
   if (ytCommentBody2 && ytCommentBody2[1].trim()) return { intent: "YT_ACTION", slots: { action: "add_comment", text: ytCommentBody2[1].trim() } };
   if (/^(?:add|write|leave|post)\s+(?:a\s+)?comment$/.test(t)) return { intent: "YT_ACTION", slots: { action: "add_comment" } };
 
-  // ── Shorts ──
-  if (/^(?:next\s+short|swipe\s+up|skip\s+short)$/.test(t)) return { intent: "YT_ACTION", slots: { action: "next_short" } };
+  // ── Shorts (say "next short"; "swipe up" is used for Instagram Reels) ──
+  if (/^(?:next\s+short|skip\s+short)$/.test(t)) return { intent: "YT_ACTION", slots: { action: "next_short" } };
   if (/^(?:prev(?:ious)?\s+short|swipe\s+down|last\s+short)$/.test(t)) return { intent: "YT_ACTION", slots: { action: "prev_short" } };
   if (/^(?:like\s+(?:this\s+)?short)$/.test(t)) return { intent: "MEDIA", slots: { action: "like" } };
 
@@ -427,7 +463,7 @@ function parseCommand(text) {
   if (/^(?:unmute|unmute\s+(?:the\s+)?(?:video|audio|sound|tab)|turn\s+(?:the\s+)?sound\s+(?:back\s+)?on)$/.test(t)) return { intent: "MEDIA", slots: { action: "unmute" } };
   if (/^(?:full\s*screen|enter\s+full\s*screen|go\s+full\s*screen)$/.test(t)) return { intent: "MEDIA", slots: { action: "fullscreen" } };
   if (/^(?:exit\s+full\s*screen|leave\s+full\s*screen)$/.test(t)) return { intent: "MEDIA", slots: { action: "exit_fullscreen" } };
-  if (/^(?:next(?:\s+(?:the\s+)?video)?|skip(?:\s+(?:this|the)\s+video)?)$/.test(t)) return { intent: "MEDIA", slots: { action: "next" } };
+  if (/^(?:nexxt|next(?:\s+(?:the\s+)?video)?|skip(?:\s+(?:this|the)\s+video)?)$/.test(t)) return { intent: "MEDIA", slots: { action: "next" } };
   if (/^(?:prev(?:ious)?(?:\s+(?:the\s+)?video)?)$/.test(t)) return { intent: "MEDIA", slots: { action: "previous" } };
   var skipMatch = t.match(/^(?:skip|fast\s+forward|jump)\s+(?:ahead\s+)?(?:like\s+)?(\d+)\s*(?:seconds?|s|secs?)?(?:\s+ahead)?$/);
   if (skipMatch) return { intent: "MEDIA", slots: { action: "skip", seconds: parseInt(skipMatch[1]) } };
@@ -447,12 +483,12 @@ function parseCommand(text) {
   }
 
   // ── Ordinal Selection ──
-  var ordinalMatch = t.match(/^(?:watch|play|open|click|view|select|pick|choose|go\s+to)\s+(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|story|option|channel|playlist|movie|show|short|stream)s?$/);
+  var ordinalMatch = t.match(/^(?:watch|play|open|click|view|select|pick|choose|go\s+to)\s+(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|story|reel|option|channel|playlist|movie|show|short|stream)s?$/);
   if (ordinalMatch) {
     var idx = parseOrdinal(ordinalMatch[1]);
     if (idx) return { intent: "PICK_NTH", slots: { index: idx, item_type: ordinalMatch[2] } };
   }
-  var shortOrdinal = t.match(/^(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|option|channel|short|stream)s?$/);
+  var shortOrdinal = t.match(/^(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|reel|option|channel|short|stream)s?$/);
   if (shortOrdinal) {
     var idx2 = parseOrdinal(shortOrdinal[1]);
     if (idx2) return { intent: "PICK_NTH", slots: { index: idx2, item_type: shortOrdinal[2] } };
@@ -476,7 +512,7 @@ function parseCommand(text) {
   var goToMatch = t.match(/^(?:go\s+to|open|navigate\s+to|visit)\s+(.+)$/);
   if (goToMatch) {
     var dest = goToMatch[1].trim();
-    var goOrd = dest.match(/^(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|option|channel|short|stream)s?$/);
+    var goOrd = dest.match(/^(?:the\s+)?(\w+)\s+(video|product|result|link|item|article|image|song|post|reel|option|channel|short|stream)s?$/);
     if (goOrd) {
       var gi = parseOrdinal(goOrd[1]);
       if (gi) return { intent: "PICK_NTH", slots: { index: gi, item_type: goOrd[2] } };
@@ -533,6 +569,8 @@ function parseCommand(text) {
 
   // ── System ──
   if (t === "stop" || t === "cancel" || t === "never mind" || t === "stop listening") return { intent: "SYSTEM", slots: { action: "cancel" } };
+
+  if (t === "next" || t === "nexxt" || t === "skip") return { intent: "MEDIA", slots: { action: "next" } };
 
   return { intent: "UNKNOWN", slots: { text: t } };
 }
@@ -630,8 +668,12 @@ function execute(command) {
           items = links;
         }
       }
+      else if (host.includes("instagram.com")) {
+        if (itemType === "reel" || itemType === "short") items = document.querySelectorAll("a[href*='/reel/']");
+        else if (itemType === "post" || itemType === "auto") items = document.querySelectorAll("article a[href*='/p/'], article a[href*='/reel/']");
+      }
       else if (host.includes("reddit.com")) {
-        if (itemType === "post" || itemType === "auto") items = document.querySelectorAll("a[data-click-id='body'], shreddit-post a[slot='full-post-link'], article h3 a");
+        if (itemType === "post" || itemType === "auto") items = document.querySelectorAll("a[data-click-id='body'], shreddit-post a[slot='full-post-link'], article h3 a, shreddit-post h3 a");
       }
       if (!items || items.length === 0) {
         if (itemType === "video") items = document.querySelectorAll("a[href*='watch'], a[href*='video']");
@@ -668,6 +710,57 @@ function execute(command) {
       var host = location.hostname;
       var video = document.querySelector("video");
       var isYT = host.includes("youtube.com");
+
+      // ── Instagram Reels: next / previous (ArrowDown / ArrowUp) ──
+      if (host.includes("instagram.com") && (action === "next" || action === "previous")) {
+        var pth = location.pathname || "";
+        if (/\/reels\/?$/i.test(pth) || /\/reel\//i.test(pth)) {
+          function igKey(k, code, kc) {
+            var vid = document.querySelector("main video, section video, article video, video");
+            if (vid) { try { vid.focus(); } catch (e1) {} }
+            var ev = { key: k, code: code, keyCode: kc, bubbles: true, cancelable: true, view: window };
+            document.dispatchEvent(new KeyboardEvent("keydown", ev));
+            document.dispatchEvent(new KeyboardEvent("keyup", ev));
+          }
+          if (action === "next") {
+            igKey("ArrowDown", "ArrowDown", 40);
+            return { ok: true };
+          }
+          igKey("ArrowUp", "ArrowUp", 38);
+          return { ok: true };
+        }
+      }
+
+      // ── Reddit: MEDIA like / dislike → vote buttons ──
+      if (host.includes("reddit.com")) {
+        if (action === "like") {
+          var upBt = document.querySelector("shreddit-post button[aria-label*='Upvote' i], faceplate-numbered-button button[aria-label*='Upvote' i], button[aria-label^='Upvote']");
+          if (upBt) { upBt.click(); return { ok: true }; }
+        }
+        if (action === "dislike") {
+          var dnBt = document.querySelector("shreddit-post button[aria-label*='Downvote' i], button[aria-label^='Downvote']");
+          if (dnBt) { dnBt.click(); return { ok: true }; }
+        }
+      }
+
+      // ── Instagram: MEDIA like / dislike on posts ──
+      if (host.includes("instagram.com")) {
+        if (action === "like") {
+          var igArt = document.querySelector("article");
+          var likeSvg = igArt ? igArt.querySelector("svg[aria-label='Like']") : document.querySelector("svg[aria-label='Like']");
+          if (likeSvg) {
+            var lb = likeSvg.closest("button") || likeSvg.closest("[role='button']");
+            if (lb) { lb.click(); return { ok: true }; }
+          }
+        }
+        if (action === "dislike") {
+          var unSvg = document.querySelector("article svg[aria-label='Unlike']") || document.querySelector("svg[aria-label='Unlike']");
+          if (unSvg) {
+            var ub = unSvg.closest("button") || unSvg.closest("[role='button']");
+            if (ub) { ub.click(); return { ok: true }; }
+          }
+        }
+      }
 
       // Helper: simulate keypress on the YouTube player
       function ytKey(key, opts) {
@@ -813,6 +906,167 @@ function execute(command) {
       if (result && !result.ok) speak("No media found");
       else if (result && result.speed) speak("Speed " + result.speed + "x");
       else if (result && result.volume !== undefined) speak("Volume " + result.volume + "%");
+    });
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // REDDIT_ACTION
+  // ══════════════════════════════════════
+  if (intent === "REDDIT_ACTION") {
+    inject(function(action, body) {
+      var host = location.hostname;
+      if (!host.includes("reddit.com")) return { ok: false, msg: "Not on Reddit" };
+      var post = document.querySelector("shreddit-post") || document.querySelector("article") || document;
+      function clickIn(root, sels) {
+        for (var i = 0; i < sels.length; i++) {
+          var el = root.querySelector(sels[i]);
+          if (el) { el.click(); return true; }
+        }
+        return false;
+      }
+      if (action === "upvote") {
+        if (clickIn(post, ["button[aria-label*='Upvote' i]", "faceplate-numbered-button button[aria-label*='Upvote' i]"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "downvote") {
+        if (clickIn(post, ["button[aria-label*='Downvote' i]"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "save_post") {
+        if (clickIn(post, ["button[aria-label*='Save' i]", "button[aria-label^='Save' i]"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "share") {
+        if (clickIn(post, ["button[aria-label*='Share' i]", "share-button button"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "open_comments") {
+        if (clickIn(post, ["a[href*='comment']", "button[aria-label*='Comment' i]", "[slot='comment-button'] button"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "scroll_next") {
+        window.scrollBy({ top: Math.min(window.innerHeight * 0.92, 720), behavior: "smooth" });
+        return { ok: true };
+      }
+      if (action === "scroll_prev") {
+        window.scrollBy({ top: -Math.min(window.innerHeight * 0.92, 720), behavior: "smooth" });
+        return { ok: true };
+      }
+      if (action === "join") {
+        if (clickIn(document, ["button[aria-label*='Join' i]", "subscribe-button button", "shreddit-join-button button"])) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "reply_compose" && body) {
+        var ta0 = document.querySelector("shreddit-composer textarea, faceplate-textarea-input textarea");
+        if (!ta0) clickIn(post, ["button[aria-label*='Comment' i]", "[slot='comment-button'] button"]);
+        setTimeout(function() {
+          var ta = document.querySelector("shreddit-composer textarea, faceplate-textarea-input textarea, textarea[placeholder*='What' i]");
+          if (ta) { ta.focus(); ta.value = body; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        }, 400);
+        return { ok: true };
+      }
+      return { ok: false };
+    }, [slots.action, slots.text || ""], function(result) {
+      if (result && !result.ok && result.msg) speak(result.msg);
+      else if (result && !result.ok) speak("Could not do that on Reddit");
+    });
+    return;
+  }
+
+  // ══════════════════════════════════════
+  // INSTAGRAM_ACTION
+  // ══════════════════════════════════════
+  if (intent === "INSTAGRAM_ACTION") {
+    inject(function(action, body) {
+      var host = location.hostname;
+      if (!host.includes("instagram.com")) return { ok: false, msg: "Not on Instagram" };
+      var art = document.querySelector("article");
+      function clickSvg(label) {
+        var svg = (art || document).querySelector("svg[aria-label='" + label + "']") || document.querySelector("svg[aria-label='" + label + "']");
+        if (!svg) return false;
+        var btn = svg.closest("button") || svg.closest("[role='button']");
+        if (btn) { btn.click(); return true; }
+        return false;
+      }
+      if (action === "like") {
+        if (clickSvg("Like")) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "unlike") {
+        if (clickSvg("Unlike")) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "save") {
+        if (clickSvg("Save")) return { ok: true };
+        if (clickSvg("Remove")) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "unsave") {
+        if (clickSvg("Remove")) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "share") {
+        if (clickSvg("Share")) return { ok: true };
+        return { ok: false };
+      }
+      if (action === "focus_comments") {
+        var cSvg = (art || document).querySelector("svg[aria-label*='Comment' i]");
+        if (cSvg) {
+          var cb = cSvg.closest("button") || cSvg.closest("[role='button']");
+          if (cb) { cb.click(); return { ok: true }; }
+        }
+        var cta = document.querySelector("article textarea[placeholder*='comment' i], article textarea[placeholder*='Add' i]");
+        if (cta) { cta.scrollIntoView({ behavior: "smooth", block: "center" }); cta.focus(); return { ok: true }; }
+        return { ok: false };
+      }
+      if (action === "compose_comment" && body) {
+        var t0 = document.querySelector("article textarea[placeholder*='comment' i], article textarea[placeholder*='Add' i]");
+        if (!t0 && art) {
+          var cs = art.querySelector("svg[aria-label*='Comment' i]");
+          if (cs) { var bx = cs.closest("button") || cs.closest("[role='button']"); if (bx) bx.click(); }
+        }
+        setTimeout(function() {
+          var t1 = document.querySelector("article textarea[placeholder*='comment' i], article textarea[placeholder*='Add' i]");
+          if (t1) { t1.focus(); t1.value = body; t1.dispatchEvent(new Event("input", { bubbles: true })); }
+        }, 350);
+        return { ok: true };
+      }
+      function igReelsAdvance(down) {
+        var vid = document.querySelector("main video, section video, article video, video");
+        if (vid) try { vid.focus(); } catch (e2) {}
+        var key = down ? "ArrowDown" : "ArrowUp";
+        var kc = down ? 40 : 38;
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: key, code: key, keyCode: kc, bubbles: true, cancelable: true }));
+        document.dispatchEvent(new KeyboardEvent("keyup", { key: key, code: key, keyCode: kc, bubbles: true }));
+        return true;
+      }
+      if (action === "next_story") {
+        var pathN = location.pathname || "";
+        if (/\/reels\/?$/i.test(pathN) || /\/reel\//i.test(pathN)) {
+          igReelsAdvance(true);
+          return { ok: true };
+        }
+        var nx = document.querySelector("button[aria-label*='Next' i], div[role='button'][aria-label*='Next' i]");
+        if (nx) { nx.click(); return { ok: true }; }
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", keyCode: 39, bubbles: true }));
+        return { ok: true };
+      }
+      if (action === "prev_story") {
+        var pathP = location.pathname || "";
+        if (/\/reels\/?$/i.test(pathP) || /\/reel\//i.test(pathP)) {
+          igReelsAdvance(false);
+          return { ok: true };
+        }
+        var pr = document.querySelector("button[aria-label*='Previous' i], div[role='button'][aria-label*='Previous' i]");
+        if (pr) { pr.click(); return { ok: true }; }
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37, bubbles: true }));
+        return { ok: true };
+      }
+      return { ok: false };
+    }, [slots.action, slots.text || ""], function(result) {
+      if (result && !result.ok && result.msg) speak(result.msg);
+      else if (result && !result.ok) speak("Could not do that on Instagram");
     });
     return;
   }

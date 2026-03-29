@@ -160,6 +160,8 @@
       if (p.slots.action === "add_comment" && p.slots.text) return "comment: " + (p.slots.text.length > 28 ? p.slots.text.substring(0, 28) + "…" : p.slots.text);
       return (p.slots.action || "").replace(/_/g, " ");
     }
+    if (p.intent === "REDDIT_ACTION") return "reddit " + (p.slots.action || "").replace(/_/g, " ");
+    if (p.intent === "INSTAGRAM_ACTION") return "ig " + (p.slots.action || "").replace(/_/g, " ");
     if (p.intent === "NAVIGATE") return "navigate";
     if (p.intent === "SEARCH") return "search: " + (p.slots.query || "");
     if (p.intent === "TAB_OP") return "tab " + (p.slots.action || "");

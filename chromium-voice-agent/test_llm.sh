@@ -100,6 +100,9 @@ TYPE_TEXT: type hello world, enter my email, write thank you
 
 ZOOM in/out/reset: zoom in, zoom out, reset zoom, make it bigger, make it smaller
 
+REDDIT_ACTION upvote|downvote|save_post|share|open_comments|scroll_next|scroll_prev|join|reply_compose (slots.text for reply body)
+INSTAGRAM_ACTION like|unlike|save|unsave|share|focus_comments|compose_comment|next_story|prev_story (slots.text for compose_comment)
+
 NONE: random speech, background noise, not a command, conversation, singing, humming
 
 RULES:
