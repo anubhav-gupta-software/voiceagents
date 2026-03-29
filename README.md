@@ -1,9 +1,60 @@
 # VoiceAgents
 
-This repo contains two separate local agent projects:
+VoiceAgents is a dual-agent accessibility project:
 
-- `chromium-voice-agent/` - a Chromium browser voice-control prototype for navigating pages, triggering browser actions, and testing local command classification
-- `lmmsagent/` - an LMMS-focused voice and text agent project with the LMMS `AgentControl` plugin, integration patches, transport code, and setup scripts
+- `chromium-voice-agent/` for voice-first web navigation in Chromium
+- `lmmsagent/` for voice/text control of LMMS through an in-app `AgentControl` plugin
+
+The practical goal is simple: reduce the operational burden of complex software by turning spoken intent into safe, actionable steps.
+
+## Why this approach
+
+Both projects use a layered command strategy:
+
+1. deterministic commands for speed and reliability on known actions  
+2. fuzzy normalization for common speech-to-text errors and phrasing variation  
+3. LLM fallback only when needed, with guardrails, so unrelated speech does not trigger destructive actions
+
+This design is intentional:
+
+- deterministic paths keep common commands fast and predictable
+- fallback intelligence improves real-world usability when transcription is imperfect
+- safety gates preserve trust by refusing unrelated or low-confidence commands
+
+## Accessibility impact
+
+These agents are built to support users who may face barriers with mouse-heavy, menu-dense software, including:
+
+- people with motor/physical disabilities who benefit from reduced fine-pointer demands
+- people with learning disabilities or cognitive load sensitivity who benefit from intent-level commands
+- beginners who know *what* they want to do but not *where* to click
+
+The objective is not to replace UI knowledge; it is to lower entry cost, reduce fatigue, and make advanced tools more reachable.
+
+## Why Chromium voice control is effective
+
+Web workflows are full of repetitive mechanics: tab switching, scrolling, opening tools, confirming dialogs, and navigating deep page layouts.  
+`chromium-voice-agent/` targets these mechanics directly and allows users to operate the browser by intent rather than pointer precision.
+
+For users with disabilities, this is especially valuable because it:
+
+- reduces repetitive cursor travel and click strain
+- shortens multi-step UI paths into one spoken action
+- keeps interaction in a single modality when context switching is costly
+
+## Why LMMS voice control matters
+
+Digital Audio Workstations are powerful but highly complex. LMMS has many windows, tracks, editors, and plugin workflows that can overwhelm first-time users.
+
+`lmmsagent/` focuses on that exact problem:
+
+- opening and focusing the right tool windows
+- creating tracks and patterns with direct commands
+- importing files and controlling common slicer workflows
+- normalizing noisy spoken commands into executable LMMS actions
+
+For beginners, this turns DAW navigation from “discover hidden UI pathways” into “state musical intent and iterate.”  
+For accessibility users, it reduces the interaction complexity of dense production interfaces.
 
 ## Project layout
 
@@ -36,5 +87,5 @@ Key directories:
 
 ## Intended use
 
-- use `chromium-voice-agent/` for browser-side voice control experiments
-- use `lmmsagent/` for the hackathon LMMS automation work
+- use `chromium-voice-agent/` for browser-side voice accessibility and automation experiments
+- use `lmmsagent/` for accessible LMMS control, beginner onboarding, and workflow acceleration
