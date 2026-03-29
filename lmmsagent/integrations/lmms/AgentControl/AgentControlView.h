@@ -6,6 +6,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QProcess>
+#include <QSet>
+#include <QTimer>
 
 #include "ToolPluginView.h"
 
@@ -28,6 +30,7 @@ private slots:
 	void appendLog( const QString &text );
 	void startVoiceCapture();
 	void stopVoiceCapture();
+	void processVoiceChunks();
 	void voiceProcessError( QProcess::ProcessError error );
 
 private:
@@ -37,13 +40,18 @@ private:
 	QString whisperModelPath() const;
 	QString whisperServiceBaseUrl() const;
 	QString whisperServiceModel() const;
+	QString voiceChunkDirPath() const;
 	bool useWhisperService() const;
 	bool ensureWhisperServiceReady( QString& error );
 	bool checkWhisperServiceHealth( int timeoutMs, QString& error ) const;
 	bool transcribeViaWhisperService( const QString &audioPath, QString &transcript, QString& error ) const;
+	bool transcribeAudio( const QString &audioPath, QString &transcript, bool quietNoTranscript );
 	void shutdownWhisperService();
 	QString microphoneDevice() const;
 	QStringList ffmpegCaptureArgs( const QString &outputPath ) const;
+	QStringList ffmpegContinuousCaptureArgs( const QString &outputPattern ) const;
+	bool looksLikeCommandTranscript( const QString& transcript ) const;
+	bool dispatchTranscript( const QString& transcript );
 	bool runWhisperAndDispatch( const QString &audioPath );
 
 	AgentControlPlugin *m_plugin;
@@ -54,7 +62,12 @@ private:
 	QPushButton *m_voiceStopButton;
 	QProcess *m_voiceRecordProcess;
 	QProcess *m_whisperServiceProcess;
+	QTimer *m_voiceChunkTimer;
 	QString m_voiceAudioPath;
+	QString m_voiceChunkDir;
+	QSet<QString> m_processedVoiceChunks;
+	QString m_lastDispatchedTranscript;
+	qint64 m_lastDispatchedAtMs = 0;
 };
 
 } // namespace gui

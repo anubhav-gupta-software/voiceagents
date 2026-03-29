@@ -31,10 +31,11 @@ AgentControlView::AgentControlView( AgentControlPlugin *plugin )
 	, m_input( new QLineEdit( this ) )
 	, m_log( new QTextEdit( this ) )
 	, m_status( new QLabel( tr( "Listening on 127.0.0.1:7777" ), this ) )
-		, m_voiceStartButton( new QPushButton( tr( "Start Voice" ), this ) )
-		, m_voiceStopButton( new QPushButton( tr( "Stop + Run" ), this ) )
-		, m_voiceRecordProcess( nullptr )
-		, m_whisperServiceProcess( nullptr )
+	, m_voiceStartButton( new QPushButton( tr( "Start Voice" ), this ) )
+	, m_voiceStopButton( new QPushButton( tr( "Stop Voice" ), this ) )
+	, m_voiceRecordProcess( nullptr )
+	, m_whisperServiceProcess( nullptr )
+	, m_voiceChunkTimer( new QTimer( this ) )
 {
 	setWindowTitle( tr( "Agent Control" ) );
 	setSizePolicy( QSizePolicy::Fixed, QSizePolicy::Fixed );
@@ -58,6 +59,8 @@ AgentControlView::AgentControlView( AgentControlPlugin *plugin )
 	connect( m_input, &QLineEdit::returnPressed, this, &AgentControlView::runCommand );
 	connect( m_voiceStartButton, &QPushButton::clicked, this, &AgentControlView::startVoiceCapture );
 	connect( m_voiceStopButton, &QPushButton::clicked, this, &AgentControlView::stopVoiceCapture );
+	connect( m_voiceChunkTimer, &QTimer::timeout, this, &AgentControlView::processVoiceChunks );
+	m_voiceChunkTimer->setInterval( 650 );
 	connect( m_plugin, &AgentControlPlugin::logMessage, this, &AgentControlView::appendLog );
 	connect( m_plugin, &AgentControlPlugin::commandResult, this, &AgentControlView::appendLog );
 	setVoiceUiState( false );
@@ -86,6 +89,10 @@ AgentControlView::AgentControlView( AgentControlPlugin *plugin )
 
 AgentControlView::~AgentControlView()
 {
+	if( m_voiceChunkTimer != nullptr )
+	{
+		m_voiceChunkTimer->stop();
+	}
 	if( m_voiceRecordProcess != nullptr )
 	{
 		if( m_voiceRecordProcess->state() != QProcess::NotRunning )
@@ -99,6 +106,12 @@ AgentControlView::~AgentControlView()
 		}
 		m_voiceRecordProcess->deleteLater();
 		m_voiceRecordProcess = nullptr;
+	}
+	if( !m_voiceChunkDir.isEmpty() )
+	{
+		QDir chunkDir( m_voiceChunkDir );
+		chunkDir.removeRecursively();
+		m_voiceChunkDir.clear();
 	}
 	shutdownWhisperService();
 }
@@ -127,7 +140,7 @@ void AgentControlView::setVoiceUiState( bool recording )
 	m_voiceStopButton->setEnabled( recording );
 	if( recording )
 	{
-		m_status->setText( tr( "Recording voice command..." ) );
+		m_status->setText( tr( "Voice listener running..." ) );
 	}
 	else
 	{
@@ -448,6 +461,18 @@ QString AgentControlView::microphoneDevice() const
 	return value.isEmpty() ? fallback : value;
 }
 
+QString AgentControlView::voiceChunkDirPath() const
+{
+	const QString tempDir = QStandardPaths::writableLocation( QStandardPaths::TempLocation );
+	if( tempDir.isEmpty() )
+	{
+		return QString();
+	}
+	return QDir( tempDir ).filePath(
+		QStringLiteral( "lmms_agent_voice_session_%1" )
+			.arg( QDateTime::currentMSecsSinceEpoch() ) );
+}
+
 QStringList AgentControlView::ffmpegCaptureArgs( const QString &outputPath ) const
 {
 	QStringList args;
@@ -469,6 +494,31 @@ QStringList AgentControlView::ffmpegCaptureArgs( const QString &outputPath ) con
 	return args;
 }
 
+QStringList AgentControlView::ffmpegContinuousCaptureArgs( const QString &outputPattern ) const
+{
+	QStringList args;
+	args << QStringLiteral( "-hide_banner" )
+		<< QStringLiteral( "-loglevel" ) << QStringLiteral( "error" );
+#if defined( Q_OS_MACOS )
+	args << QStringLiteral( "-f" ) << QStringLiteral( "avfoundation" )
+		<< QStringLiteral( "-i" ) << QStringLiteral( ":" ) + microphoneDevice();
+#elif defined( Q_OS_LINUX )
+	args << QStringLiteral( "-f" ) << QStringLiteral( "pulse" )
+		<< QStringLiteral( "-i" ) << microphoneDevice();
+#else
+	args << QStringLiteral( "-f" ) << QStringLiteral( "avfoundation" )
+		<< QStringLiteral( "-i" ) << QStringLiteral( ":" ) + microphoneDevice();
+#endif
+	args << QStringLiteral( "-ac" ) << QStringLiteral( "1" )
+		<< QStringLiteral( "-ar" ) << QStringLiteral( "16000" )
+		<< QStringLiteral( "-f" ) << QStringLiteral( "segment" )
+		<< QStringLiteral( "-segment_time" ) << QStringLiteral( "1.8" )
+		<< QStringLiteral( "-segment_format" ) << QStringLiteral( "wav" )
+		<< QStringLiteral( "-reset_timestamps" ) << QStringLiteral( "1" )
+		<< QStringLiteral( "-y" ) << outputPattern;
+	return args;
+}
+
 void AgentControlView::startVoiceCapture()
 {
 	if( m_voiceRecordProcess != nullptr )
@@ -477,15 +527,23 @@ void AgentControlView::startVoiceCapture()
 		return;
 	}
 
-	const QString tempDir = QStandardPaths::writableLocation( QStandardPaths::TempLocation );
-	if( tempDir.isEmpty() )
+	m_voiceChunkDir = voiceChunkDirPath();
+	if( m_voiceChunkDir.isEmpty() )
 	{
 		appendLog( tr( "Voice capture failed: no temp directory" ) );
 		return;
 	}
-	m_voiceAudioPath = QDir( tempDir ).filePath(
-		QStringLiteral( "lmms_agent_voice_%1.wav" )
-			.arg( QDateTime::currentMSecsSinceEpoch() ) );
+	if( !QDir().mkpath( m_voiceChunkDir ) )
+	{
+		appendLog( tr( "Voice capture failed: could not create chunk directory" ) );
+		m_voiceChunkDir.clear();
+		return;
+	}
+
+	m_processedVoiceChunks.clear();
+	m_lastDispatchedTranscript.clear();
+	m_lastDispatchedAtMs = 0;
+	m_voiceAudioPath.clear();
 
 	m_voiceRecordProcess = new QProcess( this );
 	connect( m_voiceRecordProcess,
@@ -494,18 +552,21 @@ void AgentControlView::startVoiceCapture()
 		&AgentControlView::voiceProcessError );
 
 	const QString ffmpeg = ffmpegPath();
-	m_voiceRecordProcess->start( ffmpeg, ffmpegCaptureArgs( m_voiceAudioPath ) );
+	const QString outputPattern = QDir( m_voiceChunkDir ).filePath( QStringLiteral( "chunk_%06d.wav" ) );
+	m_voiceRecordProcess->start( ffmpeg, ffmpegContinuousCaptureArgs( outputPattern ) );
 	if( !m_voiceRecordProcess->waitForStarted( 1500 ) )
 	{
 		appendLog( tr( "Voice capture failed: could not start %1" ).arg( ffmpeg ) );
 		m_voiceRecordProcess->deleteLater();
 		m_voiceRecordProcess = nullptr;
-		m_voiceAudioPath.clear();
+		QDir( m_voiceChunkDir ).removeRecursively();
+		m_voiceChunkDir.clear();
 		setVoiceUiState( false );
 		return;
 	}
 
-	appendLog( tr( "Voice recording started. Click Stop + Run when done." ) );
+	m_voiceChunkTimer->start();
+	appendLog( tr( "Voice listener started. Relevant commands execute automatically." ) );
 	setVoiceUiState( true );
 }
 
@@ -516,6 +577,11 @@ void AgentControlView::stopVoiceCapture()
 		appendLog( tr( "Voice capture is not running" ) );
 		setVoiceUiState( false );
 		return;
+	}
+
+	if( m_voiceChunkTimer != nullptr )
+	{
+		m_voiceChunkTimer->stop();
 	}
 
 	if( m_voiceRecordProcess->state() != QProcess::NotRunning )
@@ -543,37 +609,88 @@ void AgentControlView::stopVoiceCapture()
 	m_voiceRecordProcess = nullptr;
 	setVoiceUiState( false );
 
-	const QFileInfo audioInfo( m_voiceAudioPath );
-	if( !audioInfo.exists() || audioInfo.size() <= 0 )
+	// Process final chunk files after ffmpeg exits.
+	processVoiceChunks();
+
+	if( !m_voiceChunkDir.isEmpty() )
 	{
-		appendLog( tr( "Voice capture failed: no audio recorded" ) );
-		m_voiceAudioPath.clear();
+		QDir( m_voiceChunkDir ).removeRecursively();
+		m_voiceChunkDir.clear();
+	}
+	m_processedVoiceChunks.clear();
+	appendLog( tr( "Voice listener stopped." ) );
+}
+
+void AgentControlView::processVoiceChunks()
+{
+	if( m_voiceChunkDir.isEmpty() )
+	{
 		return;
 	}
 
-	appendLog( tr( "Transcribing voice command..." ) );
-	const QString audioPath = m_voiceAudioPath;
-	m_voiceAudioPath.clear();
-	if( !runWhisperAndDispatch( audioPath ) )
+	QDir chunkDir( m_voiceChunkDir );
+	if( !chunkDir.exists() )
 	{
-		appendLog( tr( "Voice command failed" ) );
+		return;
 	}
-	QFile::remove( audioPath );
-	QFile::remove( audioPath + QStringLiteral( ".txt" ) );
+
+	const QStringList files = chunkDir.entryList(
+		QStringList{ QStringLiteral( "chunk_*.wav" ) },
+		QDir::Files,
+		QDir::Name );
+	const bool isRecording = m_voiceRecordProcess != nullptr &&
+		m_voiceRecordProcess->state() != QProcess::NotRunning;
+
+	for( int i = 0; i < files.size(); ++i )
+	{
+		const QString& fileName = files[i];
+		if( m_processedVoiceChunks.contains( fileName ) )
+		{
+			continue;
+		}
+		// Skip the newest segment while ffmpeg is still writing.
+		if( isRecording && i == files.size() - 1 )
+		{
+			continue;
+		}
+
+		const QString audioPath = chunkDir.filePath( fileName );
+		const QFileInfo audioInfo( audioPath );
+		if( !audioInfo.exists() || audioInfo.size() < 2048 )
+		{
+			continue;
+		}
+
+		m_processedVoiceChunks.insert( fileName );
+		QString transcript;
+		if( transcribeAudio( audioPath, transcript, true ) )
+		{
+			dispatchTranscript( transcript );
+		}
+
+		QFile::remove( audioPath );
+		QFile::remove( audioPath + QStringLiteral( ".txt" ) );
+	}
 }
 
-bool AgentControlView::runWhisperAndDispatch( const QString &audioPath )
+bool AgentControlView::transcribeAudio(
+	const QString &audioPath,
+	QString &transcript,
+	bool quietNoTranscript )
 {
-	QString transcript;
+	transcript.clear();
 	if( useWhisperService() )
 	{
 		QString serviceError;
 		if( ensureWhisperServiceReady( serviceError ) &&
 			transcribeViaWhisperService( audioPath, transcript, serviceError ) )
 		{
-			appendLog( tr( "Whisper service transcription completed." ) );
+			if( !quietNoTranscript )
+			{
+				appendLog( tr( "Whisper service transcription completed." ) );
+			}
 		}
-		else if( !serviceError.isEmpty() )
+		else if( !serviceError.isEmpty() && !quietNoTranscript )
 		{
 			appendLog( tr( "Whisper service unavailable: %1. Falling back to CLI." ).arg( serviceError ) );
 		}
@@ -594,7 +711,10 @@ bool AgentControlView::runWhisperAndDispatch( const QString &audioPath )
 			const QString modelPath = whisperModelPath();
 			if( modelPath.isEmpty() )
 			{
-				appendLog( tr( "No Whisper model found. Set LMMS_WHISPER_MODEL or LMMS_WHISPER_CLI." ) );
+				if( !quietNoTranscript )
+				{
+					appendLog( tr( "No Whisper model found. Set LMMS_WHISPER_MODEL or LMMS_WHISPER_CLI." ) );
+				}
 				return false;
 			}
 			whisperArgs << QStringLiteral( "-m" ) << modelPath;
@@ -604,14 +724,20 @@ bool AgentControlView::runWhisperAndDispatch( const QString &audioPath )
 		whisperProcess.start( whisperCmd, whisperArgs );
 		if( !whisperProcess.waitForStarted( 2000 ) )
 		{
-			appendLog( tr( "Could not start %1. Set LMMS_WHISPER_CLI." ).arg( whisperCmd ) );
+			if( !quietNoTranscript )
+			{
+				appendLog( tr( "Could not start %1. Set LMMS_WHISPER_CLI." ).arg( whisperCmd ) );
+			}
 			return false;
 		}
 		if( !whisperProcess.waitForFinished( 60000 ) )
 		{
 			whisperProcess.kill();
 			whisperProcess.waitForFinished( 1000 );
-			appendLog( tr( "Whisper timed out" ) );
+			if( !quietNoTranscript )
+			{
+				appendLog( tr( "Whisper timed out" ) );
+			}
 			return false;
 		}
 
@@ -627,20 +753,145 @@ bool AgentControlView::runWhisperAndDispatch( const QString &audioPath )
 		if( transcript.isEmpty() )
 		{
 			const QString whisperErrors = QString::fromUtf8( whisperProcess.readAllStandardError() ).trimmed();
-			appendLog( tr( "Whisper returned no transcript%1" )
-				.arg( whisperErrors.isEmpty() ? QString() : QStringLiteral( ": " ) + whisperErrors ) );
-			if( whisperErrors.contains( QStringLiteral( "whisperkit transcription failed" ), Qt::CaseInsensitive ) )
+			if( !quietNoTranscript )
 			{
-				appendLog( tr( "No speech detected. Try speaking louder/longer and set LMMS_MIC_DEVICE (macOS often uses 1)." ) );
+				appendLog( tr( "Whisper returned no transcript%1" )
+					.arg( whisperErrors.isEmpty() ? QString() : QStringLiteral( ": " ) + whisperErrors ) );
+				if( whisperErrors.contains( QStringLiteral( "whisperkit transcription failed" ), Qt::CaseInsensitive ) )
+				{
+					appendLog( tr( "No speech detected. Try speaking louder/longer and set LMMS_MIC_DEVICE (macOS often uses 1)." ) );
+				}
 			}
 			return false;
 		}
 	}
 
-	appendLog( tr( "Heard: %1" ).arg( transcript ) );
-	m_input->setText( transcript );
-	runCommand();
+	return !transcript.trimmed().isEmpty();
+}
+
+bool AgentControlView::looksLikeCommandTranscript( const QString& transcript ) const
+{
+	QString normalized = transcript.toLower().simplified();
+	if( normalized.isEmpty() )
+	{
+		return false;
+	}
+
+	normalized.remove( QRegularExpression(
+		R"(^(?:(?:hey|hi|yo|okay|ok|please|pls)\s+)*(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please|pls\s+)?(?:just\s+)?)",
+		QRegularExpression::CaseInsensitiveOption ) );
+	normalized = normalized.simplified();
+
+	const QStringList rawParts = normalized.split( ' ', Qt::SkipEmptyParts );
+	QStringList tokens;
+	for( QString token : rawParts )
+	{
+		token.remove( QRegularExpression( R"(^[^\w]+|[^\w]+$)" ) );
+		if( !token.isEmpty() )
+		{
+			tokens << token;
+		}
+	}
+	if( tokens.isEmpty() )
+	{
+		return false;
+	}
+
+	const QSet<QString> singleCommands = { QStringLiteral( "undo" ), QStringLiteral( "help" ) };
+	if( singleCommands.contains( tokens.first() ) )
+	{
+		return true;
+	}
+
+	const QSet<QString> actionKeywords =
+	{
+		QStringLiteral( "open" ), QStringLiteral( "show" ), QStringLiteral( "new" ),
+		QStringLiteral( "create" ), QStringLiteral( "make" ), QStringLiteral( "import" ),
+		QStringLiteral( "load" ), QStringLiteral( "set" ), QStringLiteral( "add" ),
+		QStringLiteral( "remove" ), QStringLiteral( "mute" ), QStringLiteral( "solo" ),
+		QStringLiteral( "undo" ), QStringLiteral( "tempo" ), QStringLiteral( "bpm" ),
+		QStringLiteral( "divide" ), QStringLiteral( "split" ), QStringLiteral( "slice" ),
+		QStringLiteral( "raise" ), QStringLiteral( "lower" ), QStringLiteral( "increase" ),
+		QStringLiteral( "decrease" )
+	};
+	const QSet<QString> domainKeywords =
+	{
+		QStringLiteral( "track" ), QStringLiteral( "instrument" ), QStringLiteral( "sample" ),
+		QStringLiteral( "automation" ), QStringLiteral( "pattern" ), QStringLiteral( "mixer" ),
+		QStringLiteral( "song" ), QStringLiteral( "editor" ), QStringLiteral( "slicer" ),
+		QStringLiteral( "segments" ), QStringLiteral( "transient" ), QStringLiteral( "kick" ),
+		QStringLiteral( "drums" ), QStringLiteral( "tempo" ), QStringLiteral( "bpm" )
+	};
+
+	const bool firstIsAction = actionKeywords.contains( tokens.first() );
+	bool hasAction = firstIsAction;
+	bool hasDomain = false;
+	for( const QString& token : tokens )
+	{
+		if( actionKeywords.contains( token ) )
+		{
+			hasAction = true;
+		}
+		if( domainKeywords.contains( token ) )
+		{
+			hasDomain = true;
+		}
+	}
+
+	if( firstIsAction && hasDomain )
+	{
+		return true;
+	}
+	if( hasAction && hasDomain && tokens.size() <= 8 )
+	{
+		return true;
+	}
+	if( QRegularExpression( R"(\b\d{2,3}\s*bpm\b)", QRegularExpression::CaseInsensitiveOption )
+		.match( normalized ).hasMatch() )
+	{
+		return true;
+	}
+	return false;
+}
+
+bool AgentControlView::dispatchTranscript( const QString& transcript )
+{
+	const QString cleanTranscript = transcript.trimmed();
+	if( cleanTranscript.isEmpty() || !looksLikeCommandTranscript( cleanTranscript ) )
+	{
+		return false;
+	}
+
+	const QString normalized = cleanTranscript.toLower().simplified();
+	const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+	if( normalized == m_lastDispatchedTranscript && nowMs - m_lastDispatchedAtMs < 2500 )
+	{
+		return false;
+	}
+
+	const QString result = m_plugin->handleCommand( cleanTranscript );
+	if( result.startsWith( QStringLiteral( "Unknown command:" ), Qt::CaseInsensitive ) ||
+		result.startsWith( QStringLiteral( "Unknown window:" ), Qt::CaseInsensitive ) ||
+		result.startsWith( QStringLiteral( "Unknown instrument:" ), Qt::CaseInsensitive ) )
+	{
+		return false;
+	}
+
+	appendLog( tr( "Heard: %1" ).arg( cleanTranscript ) );
+	appendLog( cleanTranscript + QStringLiteral( " => " ) + result );
+	m_lastDispatchedTranscript = normalized;
+	m_lastDispatchedAtMs = nowMs;
 	return true;
+}
+
+bool AgentControlView::runWhisperAndDispatch( const QString &audioPath )
+{
+	QString transcript;
+	if( !transcribeAudio( audioPath, transcript, false ) )
+	{
+		return false;
+	}
+	return dispatchTranscript( transcript );
 }
 
 void AgentControlView::voiceProcessError( QProcess::ProcessError error )
