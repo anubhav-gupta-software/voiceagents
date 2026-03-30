@@ -64,8 +64,31 @@ private:
 	bool isUnknownResponse(const QString& response) const;
 	bool isFamiliarIntentText(const QString& rawText) const;
 	bool applyHeuristicMappings(const QString& rawText, QString& mappedCommand, QString& reason) const;
-	bool resolveWithOllama(const QString& rawText, QString& mappedCommand, double& confidence, QString& error) const;
+	bool resolveWithOllama(
+		const QString& rawText,
+		QString& mappedCommand,
+		QString& intent,
+		QJsonObject& arguments,
+		QString& riskLevel,
+		double& confidence,
+		QString& reason,
+		QString& error ) const;
 	bool maybeRunTextAgentFallback(const QString& rawText, QString& result, QString& error);
+	QString inferIntentForCommand(const QString& commandText) const;
+	QString normalizedRiskForIntent(const QString& intent) const;
+	bool isIntentEnabled(const QString& intent) const;
+	bool commandNeedsConfirmation(
+		const QString& intent,
+		const QString& commandText,
+		const QString& riskHint = QString() ) const;
+	bool isConfirmationUtterance(const QString& rawText) const;
+	QString executeWithSafetyGate(
+		const QString& commandText,
+		const QString& source,
+		double confidence,
+		const QString& reason,
+		const QString& riskHint = QString() );
+	void emitTrace(const QString& stage, const QJsonObject& payload = QJsonObject());
 
 	QString dispatchTokens(const QStringList& tokens, const QString& rawText);
 	QJsonObject dispatchTool(const QString& toolName, const QJsonObject& args);
@@ -157,6 +180,9 @@ private:
 	QString m_selectedTrackName;
 	QString m_lastImportedAudioPath;
 	QString m_lastLoadedInstrument;
+	QString m_pendingConfirmationCommand;
+	QString m_pendingConfirmationIntent;
+	qint64 m_pendingConfirmationExpiresMs = 0;
 };
 
 class AgentControlPlugin : public ToolPlugin
