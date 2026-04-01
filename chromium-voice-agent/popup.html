@@ -55,7 +55,11 @@
 
     <div class="agent-beta" id="agent-beta">
       <p class="agent-beta-title">Autonomous agent (beta)</p>
-      <p class="agent-beta-hint">Planner: <strong>OpenAI</strong> if a key is saved below; otherwise local <strong>Ollama</strong> (<code>AUTONOMOUS_MODEL</code> in <code>autonomous_agent.js</code>). Ollama 403: <code>OLLAMA_ORIGINS=chrome-extension://*</code>; 404: <code>ollama list</code> / pull model.</p>
+      <div id="planner-backend-bar" class="planner-backend-bar" role="status" aria-live="polite">
+        <span class="planner-backend-dot" aria-hidden="true"></span>
+        <span id="planner-backend-text">Checking planner…</span>
+      </div>
+      <p class="agent-beta-hint">Voice commands still use Ollama in <code>background.js</code>. Ollama 403: <code>OLLAMA_ORIGINS=chrome-extension://*</code>; 404: <code>ollama list</code> / pull. To change the Ollama planner model, edit <code>AUTONOMOUS_MODEL</code> in <code>autonomous_agent.js</code>.</p>
       <input id="agent-goal" type="text" placeholder='Goal, e.g. "scroll down twice" or open a site' autocomplete="off" spellcheck="false">
       <label class="agent-max-label">Max steps <input type="number" id="agent-max-steps" value="15" min="1" max="100" title="Safety cap per run"></label>
       <div class="agent-beta-actions">

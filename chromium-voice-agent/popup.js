@@ -85,6 +85,25 @@
   var openaiSaveBtn = document.getElementById("openai-save");
   var openaiClearBtn = document.getElementById("openai-clear");
   var openaiStatus = document.getElementById("openai-save-status");
+  var plannerBackendBar = document.getElementById("planner-backend-bar");
+  var plannerBackendText = document.getElementById("planner-backend-text");
+
+  function refreshPlannerBackendLabel() {
+    if (!plannerBackendText || !plannerBackendBar) return;
+    plannerBackendText.textContent = "Checking planner…";
+    plannerBackendBar.className = "planner-backend-bar";
+    chrome.runtime.sendMessage({ type: "AUTONOMOUS_GET_MODEL" }, function(resp) {
+      if (chrome.runtime.lastError || !resp) {
+        var errMsg = chrome.runtime.lastError ? chrome.runtime.lastError.message : "no response";
+        plannerBackendText.textContent = "Autonomous planner: unknown (" + errMsg + ")";
+        return;
+      }
+      var openai = resp.plannerBackend === "openai";
+      plannerBackendBar.className = "planner-backend-bar " + (openai ? "openai" : "ollama");
+      plannerBackendText.textContent =
+        "Autonomous planner: " + (openai ? "OpenAI" : "Ollama") + " — " + (resp.model || "?");
+    });
+  }
 
   function loadOpenAISettings() {
     if (!openaiStatus && !openaiModelInput) return;
@@ -116,6 +135,7 @@
         chrome.storage.local.set({ va_openai_api_key: keyToStore, va_openai_model: model }, function() {
           if (openaiKeyInput) openaiKeyInput.value = "";
           if (openaiStatus) openaiStatus.textContent = "Saved. Autonomous planner uses OpenAI (" + model + ").";
+          refreshPlannerBackendLabel();
         });
       });
     });
@@ -125,10 +145,12 @@
       chrome.storage.local.remove(["va_openai_api_key"], function() {
         if (openaiKeyInput) openaiKeyInput.value = "";
         if (openaiStatus) openaiStatus.textContent = "OpenAI key removed. Planner uses local Ollama.";
+        refreshPlannerBackendLabel();
       });
     });
   }
   loadOpenAISettings();
+  refreshPlannerBackendLabel();
 
   toggle.addEventListener("change", function() {
     chrome.runtime.sendMessage({ type: "TOGGLE_LISTEN" }, function(resp) {
@@ -332,7 +354,9 @@
         lastAutonomousPlan = copy;
         agentRunBtn.disabled = plan.tool === "done" || plan.tool === "none";
         agentOut.textContent =
-          "Model: " +
+          "Planner: " +
+          (resp.plannerBackend === "openai" ? "OpenAI" : "Ollama") +
+          " · model: " +
           (resp.model || "?") +
           "\n\n" +
           JSON.stringify(copy, null, 2) +
