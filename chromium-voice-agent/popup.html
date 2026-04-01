@@ -41,6 +41,17 @@
       </button>
     </form>
 
+    <div class="agent-beta" id="agent-beta">
+      <p class="agent-beta-title">Autonomous agent (beta)</p>
+      <p class="agent-beta-hint">Needs Ollama with <code>OLLAMA_ORIGINS=chrome-extension://*</code> (otherwise HTTP 403). Model: <code>AUTONOMOUS_MODEL</code> in <code>autonomous_agent.js</code>.</p>
+      <input id="agent-goal" type="text" placeholder='Goal, e.g. "scroll down once" or open a site' autocomplete="off" spellcheck="false">
+      <div class="agent-beta-actions">
+        <button type="button" id="agent-plan" class="agent-btn">Plan 1 step</button>
+        <button type="button" id="agent-run" class="agent-btn primary" disabled>Run that step</button>
+      </div>
+      <pre id="agent-out" class="agent-out" aria-live="polite"></pre>
+    </div>
+
     <div id="log" class="log"></div>
 
     <div class="hints">

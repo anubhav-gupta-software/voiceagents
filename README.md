@@ -63,10 +63,31 @@ For accessibility users, it reduces the interaction complexity of dense producti
 
 Browser automation prototype for voice-driven web control.
 
+#### Ollama HTTP 403 from the extension
+
+Chromium sends `Origin: chrome-extension://...` on `fetch()`. Ollama denies that by default, so you see **HTTP 403** for `/api/generate` and `/api/tags`.
+
+1. Quit Ollama from the menu bar (macOS) so the background server stops.
+2. Start it from Terminal with extensions allowed:
+
+```bash
+OLLAMA_ORIGINS=chrome-extension://* ollama serve
+```
+
+If your Ollama version does not accept that wildcard, use your real extension id from `chrome://extensions` (Developer mode on):
+
+```bash
+OLLAMA_ORIGINS=chrome-extension://abcdefghijklmnopqrstuvwxyz123456 ollama serve
+```
+
+Leave that Terminal window open, or set the same variable in a LaunchAgent / shell profile so it persists.
+
 Key files:
 
 - `chromium-voice-agent/manifest.json`
 - `chromium-voice-agent/background.js`
+- `chromium-voice-agent/autonomous_agent.js` (local Ollama planner + page snapshot, Phase 1)
+- `chromium-voice-agent/AUTONOMOUS_AGENT_PLAN.md` (roadmap for full autonomous loop)
 - `chromium-voice-agent/speech.js`
 - `chromium-voice-agent/popup.html`
 - `chromium-voice-agent/popup.js`

@@ -8,6 +8,11 @@
   var cmdInput = document.getElementById("cmd-input");
   var cmdForm = document.getElementById("cmd-form");
   var log = document.getElementById("log");
+  var agentGoal = document.getElementById("agent-goal");
+  var agentPlanBtn = document.getElementById("agent-plan");
+  var agentRunBtn = document.getElementById("agent-run");
+  var agentOut = document.getElementById("agent-out");
+  var lastAutonomousPlan = null;
 
   chrome.runtime.sendMessage({ type: "GET_LISTEN_MODE" }, function(resp) {
     if (resp) {
@@ -139,6 +144,64 @@
     entry.appendChild(msg);
     log.insertBefore(entry, log.firstChild);
     while (log.children.length > 30) log.removeChild(log.lastChild);
+  }
+
+  if (agentPlanBtn && agentRunBtn && agentGoal && agentOut) {
+    agentPlanBtn.addEventListener("click", function() {
+      var goal = agentGoal.value.trim();
+      if (!goal) {
+        agentOut.textContent = "Enter a goal first.";
+        return;
+      }
+      lastAutonomousPlan = null;
+      agentRunBtn.disabled = true;
+      agentOut.textContent = "Planning (Ollama)...";
+      chrome.runtime.sendMessage({ type: "AUTONOMOUS_PLAN_STEP", goal: goal, history: [] }, function(resp) {
+        if (chrome.runtime.lastError) {
+          agentOut.textContent = "Error: " + chrome.runtime.lastError.message;
+          return;
+        }
+        if (!resp || !resp.ok) {
+          agentOut.textContent = "Plan failed: " + (resp && resp.error ? resp.error : "?") + "\n\n" + JSON.stringify(resp, null, 2);
+          return;
+        }
+        var plan = resp.plan;
+        var copy = { tool: plan.tool, args: plan.args, reason: plan.reason };
+        lastAutonomousPlan = copy;
+        agentRunBtn.disabled = plan.tool === "done" || plan.tool === "none";
+        agentOut.textContent =
+          "Model: " +
+          (resp.model || "?") +
+          "\n\n" +
+          JSON.stringify(copy, null, 2) +
+          "\n\n(snapshot: " +
+          (resp.snapshot && resp.snapshot.elements ? resp.snapshot.elements.length : 0) +
+          " elements)";
+      });
+    });
+
+    agentRunBtn.addEventListener("click", function() {
+      if (!lastAutonomousPlan) {
+        agentOut.textContent = "Plan a step first.";
+        return;
+      }
+      agentOut.textContent = "Running: " + lastAutonomousPlan.tool + "...";
+      chrome.runtime.sendMessage(
+        {
+          type: "AUTONOMOUS_RUN_TOOL",
+          tool: lastAutonomousPlan.tool,
+          args: lastAutonomousPlan.args
+        },
+        function(resp) {
+          if (chrome.runtime.lastError) {
+            agentOut.textContent = "Error: " + chrome.runtime.lastError.message;
+            return;
+          }
+          agentOut.textContent = JSON.stringify(resp, null, 2);
+          if (resp && resp.ok && resp.finished) agentRunBtn.disabled = true;
+        }
+      );
+    });
   }
 
   document.querySelectorAll(".hint-grid span").forEach(function(chip) {

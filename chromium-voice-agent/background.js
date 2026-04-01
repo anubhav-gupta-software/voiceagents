@@ -2,6 +2,8 @@
 // Always-on listening, NLU parsing, command execution.
 "use strict";
 
+importScripts("autonomous_agent.js");
+
 var listenMode = true;
 var ollamaAvailable = null;
 
@@ -127,13 +129,33 @@ function checkOllama() {
   var controller = new AbortController();
   var timeout = setTimeout(function() { controller.abort(); }, 5000);
   fetch("http://localhost:11434/api/tags", { signal: controller.signal })
-    .then(function(r) { clearTimeout(timeout); return r.json(); })
+    .then(function(r) {
+      clearTimeout(timeout);
+      if (r.status === 403) {
+        ollamaAvailable = false;
+        console.warn(
+          "Ollama: HTTP 403 (extension origin blocked). Fix: OLLAMA_ORIGINS=chrome-extension://* ollama serve (see README)."
+        );
+        return null;
+      }
+      if (!r.ok) {
+        ollamaAvailable = false;
+        console.log("Ollama: HTTP", r.status);
+        return null;
+      }
+      return r.json();
+    })
     .then(function(data) {
+      if (!data) return;
       ollamaAvailable = true;
       var models = (data.models || []).map(function(m) { return m.name; }).join(", ");
       console.log("Ollama: connected, models:", models);
     })
-    .catch(function(err) { clearTimeout(timeout); ollamaAvailable = false; console.log("Ollama: not available —", err.message || err); });
+    .catch(function(err) {
+      clearTimeout(timeout);
+      ollamaAvailable = false;
+      console.log("Ollama: not available —", err.message || err);
+    });
 }
 setTimeout(checkOllama, 1000);
 setInterval(checkOllama, 30000);
@@ -150,7 +172,15 @@ function callLLM(text) {
       options: { temperature: 0.1, num_predict: 150 }
     })
   })
-  .then(function(r) { return r.json(); })
+  .then(function(r) {
+    if (r.status === 403) {
+      throw new Error(
+        "Ollama HTTP 403: set OLLAMA_ORIGINS=chrome-extension://* then restart Ollama (README: Ollama 403)."
+      );
+    }
+    if (!r.ok) throw new Error("Ollama HTTP " + r.status);
+    return r.json();
+  })
   .then(function(data) {
     var resp = (data.response || "").trim();
     console.log("LLM raw:", resp);
@@ -1573,6 +1603,85 @@ function inject(func, args, callback) {
   });
 }
 
+function injectIntoTab(tabId, func, args, callback) {
+  chrome.scripting.executeScript({ target: { tabId: tabId }, func: func, args: args || [] }, function(results) {
+    if (chrome.runtime.lastError) {
+      if (callback) callback(new Error(chrome.runtime.lastError.message));
+      return;
+    }
+    if (callback) callback(null, results && results[0] ? results[0].result : undefined);
+  });
+}
+
+function runAutonomousTool(tabId, tool, args, sendResponse) {
+  var t = (tool || "").toLowerCase();
+  var a = args || {};
+
+  if (t === "done" || t === "none") {
+    sendResponse({ ok: true, finished: true });
+    return;
+  }
+
+  if (t === "wait") {
+    var ms = Math.min(5000, Math.max(0, parseInt(a.ms, 10) || 500));
+    setTimeout(function() {
+      sendResponse({ ok: true });
+    }, ms);
+    return;
+  }
+
+  if (t === "navigate" && a.url) {
+    var u = String(a.url);
+    if (!/^https:\/\//i.test(u) && !/^http:\/\/localhost/i.test(u) && !/^http:\/\/127\.0\.0\.1/i.test(u)) {
+      sendResponse({ ok: false, error: "only https or local http allowed" });
+      return;
+    }
+    chrome.tabs.update(tabId, { url: u }, function() {
+      if (chrome.runtime.lastError) sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+      else sendResponse({ ok: true });
+    });
+    return;
+  }
+
+  if (t === "scroll") {
+    var dir = a.direction === "up" ? "up" : "down";
+    var amt = a.amount === "small" || a.amount === "large" ? a.amount : "medium";
+    injectIntoTab(
+      tabId,
+      function(direction, amount) {
+        var sizes = { small: 0.25, medium: 0.6, large: 1.2 };
+        var px = window.innerHeight * (sizes[amount] || 0.6);
+        window.scrollBy({ behavior: "smooth", top: direction === "down" ? px : -px });
+      },
+      [dir, amt],
+      function(err) {
+        sendResponse({ ok: !err, error: err && err.message });
+      }
+    );
+    return;
+  }
+
+  if (t === "click") {
+    var m = typeof a.target_id === "string" && a.target_id.match(/^e_(\d+)$/i);
+    var idx = m ? parseInt(m[1], 10) : -1;
+    if (idx < 0) {
+      sendResponse({ ok: false, error: "bad target_id" });
+      return;
+    }
+    AutonomousAgent.clickElementByIndex(tabId, idx, function(err) {
+      sendResponse({ ok: !err, error: err && err.message });
+    });
+    return;
+  }
+
+  if (t === "type") {
+    sendResponse({ ok: false, error: "type tool not implemented yet" });
+    return;
+  }
+
+  sendResponse({ ok: false, error: "unknown tool: " + t });
+}
+
 function speak(text) {
   try { chrome.tts.speak(text, { rate: 1.1 }); } catch (e) {}
 }
@@ -1688,6 +1797,63 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   }
   else if (msg.type === "SPEECH_INTERIM" || msg.type === "SPEECH_STATUS" || msg.type === "SPEECH_ERROR") {
     safeBroadcast(msg);
+  }
+  else if (msg.type === "AUTONOMOUS_PLAN_STEP") {
+    function runPlan(tabId) {
+      AutonomousAgent.collectSnapshot(tabId, function(err, snap) {
+        if (err) {
+          sendResponse({ ok: false, error: err.message });
+          return;
+        }
+        AutonomousAgent.planStep(msg.goal || "", msg.history || [], snap, function(err2, plan) {
+          if (err2) {
+            sendResponse({
+              ok: false,
+              error: err2.message || String(err2),
+              snapshot: snap,
+              model: AutonomousAgent.AUTONOMOUS_MODEL
+            });
+            return;
+          }
+          sendResponse({
+            ok: true,
+            snapshot: snap,
+            plan: plan,
+            model: AutonomousAgent.AUTONOMOUS_MODEL
+          });
+        });
+      });
+    }
+    if (msg.tabId) runPlan(msg.tabId);
+    else {
+      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+        if (!tabs || !tabs[0]) {
+          sendResponse({ ok: false, error: "no active tab" });
+          return;
+        }
+        runPlan(tabs[0].id);
+      });
+    }
+    return true;
+  }
+  else if (msg.type === "AUTONOMOUS_RUN_TOOL") {
+    function runToolOnTab(tabId) {
+      runAutonomousTool(tabId, msg.tool, msg.args, sendResponse);
+    }
+    if (msg.tabId) runToolOnTab(msg.tabId);
+    else {
+      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+        if (!tabs || !tabs[0]) {
+          sendResponse({ ok: false, error: "no active tab" });
+          return;
+        }
+        runToolOnTab(tabs[0].id);
+      });
+    }
+    return true;
+  }
+  else if (msg.type === "AUTONOMOUS_GET_MODEL") {
+    sendResponse({ model: AutonomousAgent.AUTONOMOUS_MODEL });
   }
   return false;
 });
