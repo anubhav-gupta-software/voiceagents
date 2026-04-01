@@ -1753,6 +1753,16 @@ function autonomousSettleMsForTool(tool) {
   return 400;
 }
 
+/** Loads optional OpenAI key from storage; otherwise planner uses local Ollama. */
+function autonomousPlanStep(goal, history, snapshot, callback) {
+  chrome.storage.local.get(["va_openai_api_key", "va_openai_model"], function(r) {
+    var key = (r.va_openai_api_key || "").trim();
+    var model = (r.va_openai_model || "gpt-4o-mini").trim();
+    var opts = key ? { openaiApiKey: key, openaiModel: model } : null;
+    AutonomousAgent.planStep(goal, history, snapshot, callback, opts);
+  });
+}
+
 function autonomousRunLoopTick() {
   if (autonomousRunner.status !== "running") return;
   if (autonomousRunner.cancelRequested) {
@@ -1796,7 +1806,7 @@ function autonomousRunLoopTick() {
       return;
     }
 
-    AutonomousAgent.planStep(autonomousRunner.goal, autonomousRunner.history, snapBefore, function(err2, plan) {
+    autonomousPlanStep(autonomousRunner.goal, autonomousRunner.history, snapBefore, function(err2, plan) {
       if (err2) {
         autonomousRunner.status = "idle";
         autonomousRunner.lastError = err2.message || String(err2);
@@ -2048,26 +2058,33 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
   }
   else if (msg.type === "AUTONOMOUS_PLAN_STEP") {
     function runPlan(tabId) {
-      AutonomousAgent.collectSnapshot(tabId, function(err, snap) {
-        if (err) {
-          sendResponse({ ok: false, error: err.message });
-          return;
-        }
-        AutonomousAgent.planStep(msg.goal || "", msg.history || [], snap, function(err2, plan) {
-          if (err2) {
-            sendResponse({
-              ok: false,
-              error: err2.message || String(err2),
-              snapshot: snap,
-              model: AutonomousAgent.AUTONOMOUS_MODEL
-            });
+      chrome.storage.local.get(["va_openai_api_key", "va_openai_model"], function(st) {
+        var hasOpenAI = !!(st.va_openai_api_key && String(st.va_openai_api_key).trim());
+        var plannerModel = hasOpenAI ? (st.va_openai_model || "gpt-4o-mini").trim() : AutonomousAgent.AUTONOMOUS_MODEL;
+        var plannerBackend = hasOpenAI ? "openai" : "ollama";
+        AutonomousAgent.collectSnapshot(tabId, function(err, snap) {
+          if (err) {
+            sendResponse({ ok: false, error: err.message });
             return;
           }
-          sendResponse({
-            ok: true,
-            snapshot: snap,
-            plan: plan,
-            model: AutonomousAgent.AUTONOMOUS_MODEL
+          autonomousPlanStep(msg.goal || "", msg.history || [], snap, function(err2, plan) {
+            if (err2) {
+              sendResponse({
+                ok: false,
+                error: err2.message || String(err2),
+                snapshot: snap,
+                model: plannerModel,
+                plannerBackend: plannerBackend
+              });
+              return;
+            }
+            sendResponse({
+              ok: true,
+              snapshot: snap,
+              plan: plan,
+              model: plan._plannerModel || plannerModel,
+              plannerBackend: plan._plannerBackend || plannerBackend
+            });
           });
         });
       });
@@ -2109,7 +2126,17 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
       }
       var start = autonomousStartLoop(msg.goal || "", msg.maxSteps, tid);
       if (!start.ok) sendResponse(start);
-      else sendResponse({ ok: true, maxSteps: autonomousRunner.maxSteps, model: AutonomousAgent.AUTONOMOUS_MODEL });
+      else {
+        chrome.storage.local.get(["va_openai_api_key", "va_openai_model"], function(r) {
+          var hasOpenAI = !!(r.va_openai_api_key && String(r.va_openai_api_key).trim());
+          sendResponse({
+            ok: true,
+            maxSteps: autonomousRunner.maxSteps,
+            model: hasOpenAI ? (r.va_openai_model || "gpt-4o-mini").trim() : AutonomousAgent.AUTONOMOUS_MODEL,
+            plannerBackend: hasOpenAI ? "openai" : "ollama"
+          });
+        });
+      }
     });
     return true;
   }
@@ -2147,7 +2174,14 @@ chrome.runtime.onMessage.addListener(function(msg, sender, sendResponse) {
     });
   }
   else if (msg.type === "AUTONOMOUS_GET_MODEL") {
-    sendResponse({ model: AutonomousAgent.AUTONOMOUS_MODEL });
+    chrome.storage.local.get(["va_openai_api_key", "va_openai_model"], function(r) {
+      var hasOpenAI = !!(r.va_openai_api_key && String(r.va_openai_api_key).trim());
+      sendResponse({
+        model: hasOpenAI ? (r.va_openai_model || "gpt-4o-mini").trim() : AutonomousAgent.AUTONOMOUS_MODEL,
+        plannerBackend: hasOpenAI ? "openai" : "ollama"
+      });
+    });
+    return true;
   }
   return false;
 });

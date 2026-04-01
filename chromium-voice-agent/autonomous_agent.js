@@ -4,6 +4,7 @@
 "use strict";
 
 var OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate";
+var OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
 // Must match an exact name from `ollama list` (404 = wrong tag or not pulled).
 // Default matches voice LLM in background.js; for stronger planning try e.g. llama3.1:8b after `ollama pull llama3.1:8b`.
@@ -20,7 +21,7 @@ var AUTONOMOUS_SYSTEM_PROMPT = [
   "Tool args:",
   "- click: { \"target_id\": \"e_N\" } using ids from the snapshot only",
   "- scroll: { \"direction\": \"up\" | \"down\", \"amount\": \"small\" | \"medium\" | \"large\" } optional amount default medium",
-  "- navigate: { \"url\": \"https://...\" } must be https (or http only for localhost)",
+  "- navigate: { \"url\": \"https://...\" } loads that URL in the CURRENT tab (same tab, not a new window). must be https (or http only for localhost)",
   "- type: { \"target_id\": \"e_N\", \"text\": \"...\" } for text/search inputs and textareas (focuses, sets value, fires input/change)",
   "- wait: { \"ms\": number } max 5000",
   "- done: {} when the USER_GOAL is fully achieved on this page",
@@ -29,8 +30,9 @@ var AUTONOMOUS_SYSTEM_PROMPT = [
   "Rules:",
   "- Prefer the smallest action that moves toward USER_GOAL.",
   "- Never invent element ids. Only use e_0 .. e_N from the snapshot.",
-  "- If the goal needs a different site, use navigate.",
-  "- If you are unsure, use none.",
+  "- If the goal needs a different site or says \"open [website]\", use navigate with a full https URL (e.g. https://chatgpt.com/). That is correct even if the current page is unrelated (e.g. Amazon). Do NOT use none because you think a \"new tab\" is required — there is no new-tab tool; navigate is how you open a site.",
+  "- After navigate, later steps can click/type on the new page.",
+  "- If you are unsure given the snapshot, use none.",
   "",
   "RECENT_HISTORY_JSON (when present) lists prior steps in this run: each entry may include tool, args, reason, execOk, execError, and verify (urlChanged, elementCountDelta, elementCountAfter). Use it to avoid repeating failed actions and to decide if the goal is met."
 ].join("\n");
@@ -217,12 +219,11 @@ function parseToolJson(text) {
   return obj;
 }
 
-function planStep(goal, history, snapshot, callback) {
+function buildAutonomousUserBlock(goal, history, snapshot) {
   var hist = history || [];
   var histStr = JSON.stringify(hist);
   if (histStr.length > 12000) histStr = histStr.slice(-12000);
-
-  var userBlock = [
+  return [
     "USER_GOAL:",
     String(goal || "").slice(0, 4000),
     "",
@@ -234,6 +235,80 @@ function planStep(goal, history, snapshot, callback) {
     "",
     "Output the single next tool JSON now."
   ].join("\n");
+}
+
+function planStepOpenAI(userBlock, apiKey, model, callback) {
+  var controller = new AbortController();
+  var to = setTimeout(function() {
+    controller.abort();
+  }, 90000);
+
+  fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + apiKey
+    },
+    signal: controller.signal,
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        { role: "system", content: AUTONOMOUS_SYSTEM_PROMPT },
+        { role: "user", content: userBlock }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.15,
+      max_tokens: 512
+    })
+  })
+    .then(function(r) {
+      clearTimeout(to);
+      return r.json().then(function(data) {
+        if (r.status === 401) {
+          throw new Error(
+            "OpenAI HTTP 401: check API key at https://platform.openai.com/api-keys (stored in extension popup)."
+          );
+        }
+        if (r.status === 429) {
+          throw new Error("OpenAI HTTP 429: rate limit or quota — try again later or check billing.");
+        }
+        if (!r.ok) {
+          var em = data && data.error && data.error.message ? data.error.message : "HTTP " + r.status;
+          throw new Error("OpenAI: " + em);
+        }
+        return data;
+      });
+    })
+    .then(function(data) {
+      var raw =
+        (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+      raw = String(raw).trim();
+      var plan = parseToolJson(raw);
+      plan._raw = raw;
+      plan._plannerBackend = "openai";
+      plan._plannerModel = model;
+      callback(null, plan);
+    })
+    .catch(function(err) {
+      clearTimeout(to);
+      callback(err);
+    });
+}
+
+function planStep(goal, history, snapshot, callback, options) {
+  options = options || {};
+  var openaiKey = options.openaiApiKey != null ? String(options.openaiApiKey).trim() : "";
+  var openaiModel =
+    options.openaiModel != null && String(options.openaiModel).trim()
+      ? String(options.openaiModel).trim()
+      : "gpt-4o-mini";
+
+  var userBlock = buildAutonomousUserBlock(goal, history, snapshot);
+
+  if (openaiKey) {
+    planStepOpenAI(userBlock, openaiKey, openaiModel, callback);
+    return;
+  }
 
   var controller = new AbortController();
   var to = setTimeout(function() {
@@ -278,6 +353,8 @@ function planStep(goal, history, snapshot, callback) {
       var raw = (data.response || "").trim();
       var plan = parseToolJson(raw);
       plan._raw = raw;
+      plan._plannerBackend = "ollama";
+      plan._plannerModel = AUTONOMOUS_MODEL;
       callback(null, plan);
     })
     .catch(function(err) {

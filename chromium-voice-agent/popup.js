@@ -80,6 +80,56 @@
     } else setLoopUiIdle();
   });
 
+  var openaiKeyInput = document.getElementById("openai-api-key");
+  var openaiModelInput = document.getElementById("openai-model");
+  var openaiSaveBtn = document.getElementById("openai-save");
+  var openaiClearBtn = document.getElementById("openai-clear");
+  var openaiStatus = document.getElementById("openai-save-status");
+
+  function loadOpenAISettings() {
+    if (!openaiStatus && !openaiModelInput) return;
+    chrome.storage.local.get(["va_openai_api_key", "va_openai_model"], function(r) {
+      if (openaiModelInput) openaiModelInput.value = (r.va_openai_model || "gpt-4o-mini").trim();
+      if (openaiKeyInput) openaiKeyInput.value = "";
+      if (openaiStatus) {
+        if (r.va_openai_api_key && String(r.va_openai_api_key).trim()) {
+          openaiStatus.textContent =
+            "Saved API key on file — paste a new key to replace, or Save to update the model only.";
+        } else {
+          openaiStatus.textContent = "No OpenAI key: autonomous planner uses local Ollama.";
+        }
+      }
+    });
+  }
+
+  if (openaiSaveBtn && openaiModelInput) {
+    openaiSaveBtn.addEventListener("click", function() {
+      chrome.storage.local.get(["va_openai_api_key"], function(prev) {
+        var keyInput = openaiKeyInput ? openaiKeyInput.value.trim() : "";
+        var model = openaiModelInput.value.trim() || "gpt-4o-mini";
+        var existing = (prev.va_openai_api_key || "").trim();
+        var keyToStore = keyInput.length ? keyInput : existing;
+        if (!keyToStore.length) {
+          if (openaiStatus) openaiStatus.textContent = "Enter an API key first (or keep using Ollama without saving).";
+          return;
+        }
+        chrome.storage.local.set({ va_openai_api_key: keyToStore, va_openai_model: model }, function() {
+          if (openaiKeyInput) openaiKeyInput.value = "";
+          if (openaiStatus) openaiStatus.textContent = "Saved. Autonomous planner uses OpenAI (" + model + ").";
+        });
+      });
+    });
+  }
+  if (openaiClearBtn) {
+    openaiClearBtn.addEventListener("click", function() {
+      chrome.storage.local.remove(["va_openai_api_key"], function() {
+        if (openaiKeyInput) openaiKeyInput.value = "";
+        if (openaiStatus) openaiStatus.textContent = "OpenAI key removed. Planner uses local Ollama.";
+      });
+    });
+  }
+  loadOpenAISettings();
+
   toggle.addEventListener("change", function() {
     chrome.runtime.sendMessage({ type: "TOGGLE_LISTEN" }, function(resp) {
       if (resp) updateStatus(resp.listening);
@@ -267,7 +317,7 @@
       }
       lastAutonomousPlan = null;
       agentRunBtn.disabled = true;
-      agentOut.textContent = "Planning (Ollama)...";
+      agentOut.textContent = "Planning...";
       chrome.runtime.sendMessage({ type: "AUTONOMOUS_PLAN_STEP", goal: goal, history: [] }, function(resp) {
         if (chrome.runtime.lastError) {
           agentOut.textContent = "Error: " + chrome.runtime.lastError.message;
